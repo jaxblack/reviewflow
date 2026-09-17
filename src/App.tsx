@@ -66,6 +66,21 @@ function App() {
     void initialize()
   }, [])
 
+  useEffect(() => {
+    if (loading) return
+    const matchingItems = items.filter((item) =>
+      matchesContentFilters(item, deferredQuery, statusFilter, riskFilter),
+    )
+    const selectedId = detail?.content.id
+    if (matchingItems.length === 0) {
+      if (selectedId) setDetail(null)
+      return
+    }
+    if (!selectedId || !matchingItems.some((item) => item.id === selectedId)) {
+      void openContent(matchingItems[0].id)
+    }
+  }, [deferredQuery, detail?.content.id, items, loading, riskFilter, statusFilter])
+
   async function initialize() {
     setLoading(true)
     try {
@@ -192,16 +207,9 @@ function App() {
   }
 
   const views = me ? availableViews(me) : []
-  const normalizedQuery = deferredQuery.trim().toLocaleLowerCase('zh-CN')
-  const filteredItems = items.filter((item) => {
-    const matchesQuery =
-      normalizedQuery.length === 0 ||
-      item.title.toLocaleLowerCase('zh-CN').includes(normalizedQuery) ||
-      item.author.name.toLocaleLowerCase('zh-CN').includes(normalizedQuery)
-    const matchesStatus = statusFilter === 'ALL' || item.status === statusFilter
-    const matchesRisk = riskFilter === 'ALL' || item.risk === riskFilter
-    return matchesQuery && matchesStatus && matchesRisk
-  })
+  const filteredItems = items.filter((item) =>
+    matchesContentFilters(item, deferredQuery, statusFilter, riskFilter),
+  )
   const hasFilters = query.trim().length > 0 || statusFilter !== 'ALL' || riskFilter !== 'ALL'
   const statusCounts = {
     DRAFT: items.filter((item) => item.status === 'DRAFT').length,
@@ -518,6 +526,22 @@ function availableViews(user: User): ViewKey[] {
 
 function firstView(user: User): ViewKey {
   return availableViews(user)[0] ?? 'mine'
+}
+
+function matchesContentFilters(
+  item: ContentSummary,
+  query: string,
+  status: StatusFilter,
+  risk: RiskFilter,
+): boolean {
+  const normalizedQuery = query.trim().toLocaleLowerCase('zh-CN')
+  const matchesQuery =
+    normalizedQuery.length === 0 ||
+    item.title.toLocaleLowerCase('zh-CN').includes(normalizedQuery) ||
+    item.author.name.toLocaleLowerCase('zh-CN').includes(normalizedQuery)
+  const matchesStatus = status === 'ALL' || item.status === status
+  const matchesRisk = risk === 'ALL' || item.risk === risk
+  return matchesQuery && matchesStatus && matchesRisk
 }
 
 export default App
