@@ -71,4 +71,51 @@ describe('HTML documentation', () => {
     expect(register).toContain('OUT OF SCOPE')
     expect(register).toContain('OPEN')
   })
+
+  it('keeps the system design implementation-ready', () => {
+    const design = readFileSync(resolve(docsRoot, 'design.html'), 'utf8')
+    const requiredSections = [
+      'architecture',
+      'roles',
+      'state-machine',
+      'domain-model',
+      'database-schema',
+      'submission-sequence',
+      'review-sequence',
+      'concurrency',
+      'api-security',
+      'evolution',
+    ]
+
+    for (const section of requiredSections) {
+      expect(design, `missing design section: ${section}`).toContain(`id="${section}"`)
+    }
+    expect(design.match(/class="technical-diagram"/g)).toHaveLength(6)
+    expect(design.match(/class="schema-card"/g)).toHaveLength(7)
+    for (const table of [
+      'users',
+      'user_roles',
+      'contents',
+      'content_revisions',
+      'review_rounds',
+      'review_decisions',
+      'idempotency_requests',
+    ]) {
+      expect(design, `missing schema table: ${table}`).toContain(`<strong>${table}</strong>`)
+    }
+    for (const invariant of [
+      'SUBMITTER',
+      'REVIEWER',
+      'ADMIN',
+      'DRAFT',
+      'IN_REVIEW',
+      'APPROVED',
+      'REJECTED',
+      'BEGIN IMMEDIATE',
+      'SELECT * FROM contents',
+      'FOR UPDATE',
+    ]) {
+      expect(design, `missing design invariant: ${invariant}`).toContain(invariant)
+    }
+  })
 })

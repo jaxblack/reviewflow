@@ -512,6 +512,242 @@ pre {
   font-size: 18px;
 }
 
+.section-nav {
+  margin: 24px 0 8px;
+  padding: 12px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  background: var(--surface-muted);
+  border: 1px solid var(--line);
+  border-radius: 7px;
+}
+
+.section-nav a {
+  padding: 6px 9px;
+  color: var(--muted);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.section-nav a:hover {
+  color: var(--teal-dark);
+  border-color: #acd1ca;
+}
+
+.diagram-frame {
+  margin: 18px 0;
+  overflow-x: auto;
+  background: #fbfcfb;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  scrollbar-gutter: stable;
+}
+
+.diagram-frame figcaption {
+  padding: 11px 14px;
+  color: var(--muted);
+  background: var(--surface-muted);
+  border-bottom: 1px solid var(--line);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.technical-diagram {
+  width: 100%;
+  min-width: 820px;
+  height: auto;
+  display: block;
+}
+
+.technical-diagram text {
+  fill: var(--ink);
+  font-family: 'Avenir Next', 'Trebuchet MS', sans-serif;
+  letter-spacing: 0;
+}
+
+.technical-diagram .node {
+  fill: #fff;
+  stroke: var(--line-strong);
+  stroke-width: 1.5;
+}
+
+.technical-diagram .node-accent {
+  fill: var(--teal-soft);
+  stroke: #8fc6bc;
+  stroke-width: 1.5;
+}
+
+.technical-diagram .node-warning {
+  fill: var(--amber-soft);
+  stroke: #dbbd79;
+  stroke-width: 1.5;
+}
+
+.technical-diagram .boundary {
+  fill: none;
+  stroke: #a9b8b3;
+  stroke-width: 1.5;
+  stroke-dasharray: 7 6;
+}
+
+.technical-diagram .connector,
+.technical-diagram .message {
+  fill: none;
+  stroke: #58706b;
+  stroke-width: 1.7;
+}
+
+.technical-diagram .response {
+  stroke-dasharray: 6 4;
+}
+
+.technical-diagram .phase {
+  fill: rgba(232, 240, 248, 0.7);
+  stroke: #b8c9d9;
+  stroke-width: 1;
+}
+
+.technical-diagram .lifeline {
+  stroke: #b8c4c0;
+  stroke-width: 1.2;
+  stroke-dasharray: 5 5;
+}
+
+.technical-diagram .activation {
+  fill: #d7ece7;
+  stroke: #8fc6bc;
+}
+
+.technical-diagram .diagram-title {
+  font-size: 15px;
+  font-weight: 800;
+}
+
+.technical-diagram .diagram-label {
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.technical-diagram .diagram-copy {
+  fill: var(--muted);
+  font-size: 10px;
+}
+
+.technical-diagram .diagram-note {
+  fill: #52635f;
+  font-size: 9px;
+}
+
+.diagram-legend {
+  margin: -7px 0 18px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px 14px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.diagram-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.legend-swatch {
+  width: 15px;
+  height: 10px;
+  display: inline-block;
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  border-radius: 2px;
+}
+
+.legend-swatch.accent {
+  background: var(--teal-soft);
+  border-color: #8fc6bc;
+}
+
+.legend-swatch.warning {
+  background: var(--amber-soft);
+  border-color: #dbbd79;
+}
+
+.schema-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.schema-card {
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+}
+
+.schema-card > header {
+  padding: 12px 14px;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  background: var(--surface-muted);
+  border-bottom: 1px solid var(--line);
+}
+
+.schema-card > header strong {
+  color: var(--ink);
+  font: 700 13px/1.4 'SFMono-Regular', Consolas, monospace;
+}
+
+.schema-card > header span {
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.schema-card .table-wrap {
+  border: 0;
+  border-radius: 0;
+}
+
+.schema-card th,
+.schema-card td {
+  padding: 8px 9px;
+  font-size: 10px;
+}
+
+.schema-card code {
+  font-size: 10px;
+}
+
+.invariant-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 9px;
+}
+
+.invariant-card {
+  padding: 12px 14px;
+  color: #42504d;
+  background: var(--surface-muted);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.invariant-card strong {
+  display: block;
+  margin-bottom: 3px;
+  color: var(--teal-dark);
+  font-size: 11px;
+}
+
 .check-list {
   margin: 0;
   padding: 0;
@@ -633,6 +869,11 @@ pre {
 
   .flow-arrow {
     transform: rotate(90deg);
+  }
+
+  .schema-grid,
+  .invariant-grid {
+    grid-template-columns: 1fr;
   }
 
   .doc-footer {

@@ -45,7 +45,7 @@
           </header>
 
           <div class="metric-strip" aria-label="测试结果摘要">
-            <div class="metric"><strong>25/25</strong><span>自动化测试</span></div>
+            <div class="metric"><strong>26/26</strong><span>自动化测试</span></div>
             <div class="metric"><strong>0</strong><span>Lint 警告</span></div>
             <div class="metric"><strong>0</strong><span>构建错误</span></div>
             <div class="metric"><strong>0</strong><span>浏览器错误</span></div>
@@ -59,7 +59,7 @@
                 <thead><tr><th>门禁</th><th>执行方式</th><th>结果</th><th>证据摘要</th></tr></thead>
                 <tbody>
                   <tr><td>静态检查</td><td><code>npm run lint</code></td><td><span class="status pass">PASS</span></td><td>0 warning，0 error</td></tr>
-                  <tr><td>自动化测试</td><td><code>npm test</code></td><td><span class="status pass">PASS</span></td><td>3 个测试文件，25 个测试全部通过</td></tr>
+                  <tr><td>自动化测试</td><td><code>npm test</code></td><td><span class="status pass">PASS</span></td><td>3 个测试文件，26 个测试全部通过</td></tr>
                   <tr><td>生产构建</td><td><code>npm run build</code></td><td><span class="status pass">PASS</span></td><td>React、Vite、服务端 TypeScript 全部通过</td></tr>
                   <tr><td>远端构建</td><td>GitHub Actions · Ubuntu 24.04 · Node 24</td><td><span class="status pass">PASS</span></td><td>完整质量门禁与生产容器 smoke test</td></tr>
                   <tr><td>线上健康</td><td><code>GET /api/health</code></td><td><span class="status pass">PASS</span></td><td>HTTP 200，database=sqlite</td></tr>
@@ -95,6 +95,7 @@
                   <tr><td>T-17</td><td>公网写入容量</td><td>用户、内容、轮次和幂等记录达到上限后返回 507，失败事务不增长</td><td><span class="status pass">PASS</span></td></tr>
                   <tr><td>T-18</td><td>跨路由 IP 限流</td><td>仅信任回环代理，同一来源跨会话、内容和管理写接口共享 30 次/分钟额度</td><td><span class="status pass">PASS</span></td></tr>
                   <tr><td>T-19</td><td>幂等记录回收</td><td>未过期记录受 2,000 条硬上限保护，24 小时后可回收空间</td><td><span class="status pass">PASS</span></td></tr>
+                  <tr><td>T-20</td><td>系统设计完整性</td><td>10 个技术章节、6 张图、7 张表结构和核心状态/锁语义持续存在</td><td><span class="status pass">PASS</span></td></tr>
                 </tbody>
               </table>
             </div>
