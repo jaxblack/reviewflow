@@ -37,7 +37,7 @@ curl -I https://qlili.com/reviewflow/
 - `Lint, test, and build`
 - `Build and smoke-test container`
 
-`.github/workflows/deploy-production.yml` 只接收当前仓库 `main` 分支成功完成的 CI，不会部署来自 fork 或其他分支的代码。首次启用前完成以下配置。
+`.github/workflows/deploy-production.yml` 只接收当前仓库 `main` 分支成功完成的 CI，不会部署来自 fork、Pull Request 或其他分支的代码。当前公开 Demo 在 CI 成功后自动发布，不再等待人工审批；Workflow 中保留了对应安全边界的注释。
 
 ### 1. 初始化服务器
 
@@ -72,7 +72,7 @@ ssh-keyscan -H SERVER_IP > ./reviewflow-known-hosts
 在仓库 `Settings > Environments` 创建 `production`：
 
 1. 将部署分支限制为 `main`。
-2. 配置 required reviewers，使生产发布在 CI 成功后仍需人工批准。
+2. 公开 Demo 不配置 required reviewers，使通过 CI 的 `main` 自动发布；接入真实内容前必须重新启用审批。
 3. 添加 Environment secrets：
 
 | Secret | 内容 |
@@ -86,7 +86,15 @@ ssh-keyscan -H SERVER_IP > ./reviewflow-known-hosts
 
 ### 4. 发布与回滚
 
-合并到 `main` 后，CI 成功会触发 production deployment。流水线以 `<commit-sha>-<run-attempt>` 创建 release，安装锁定的生产依赖，更新 systemd unit，原子切换 `current` 并检查本机健康端点。
+合并到 `main` 后，CI 成功会自动触发 production deployment。流水线以 `<commit-sha>-<run-attempt>` 创建 release，安装锁定的生产依赖，更新 systemd unit，原子切换 `current` 并检查本机健康端点。
+
+自动发布只放宽人工审批，以下门禁仍然强制执行：
+
+- Pull Request 和 `main` 都必须通过 lint、测试、生产构建与容器健康检查。
+- CD 再次校验事件必须来自当前仓库的 `main` push，成功的 fork 或 PR CI 无法取得生产 secrets。
+- `production` Environment 只允许 `main`，SSH 凭据只存为 Environment secrets。
+- 发布按单实例串行执行，不取消正在切换软链或重启 systemd 的任务。
+- 健康检查失败自动恢复上一 release；数据库和会话密钥不随 release 覆盖。
 
 如果新版本在 20 秒内未通过健康检查，脚本会自动恢复之前的 `current` 并重启服务。若需要人工回滚，可在服务器执行：
 

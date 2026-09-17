@@ -118,9 +118,9 @@ npm run dev
 
 开发模式提供默认会话密钥，仅用于本地运行。生产环境必须显式设置安全的 `SESSION_SECRET`。
 
-## 10 分钟 Ramp-up：走完核心审核流程
+## 12 分钟 Ramp-up：走完核心审核流程
 
-下面不是静态样例，而是 2026-09-17 在[在线 Demo](https://qlili.com/reviewflow/)实际执行并截图的两条测试用例。它们覆盖创建、提交、分级审核、拒绝、修改重提、不可变历史和 ADMIN 只读查看。在线环境是共享的，队列数字和时间可能变化；复现时建议给标题加上自己的前缀。
+下面不是静态样例，而是 2026-09-17 在[在线 Demo](https://qlili.com/reviewflow/)最新统一工作台实际执行并截图的三条测试用例。它们覆盖创建、提交、分级审核、拒绝、修改重提、不可变历史，以及 ADMIN 用户与角色管理。在线环境是共享的，队列数字和时间可能变化；复现时建议给标题加上自己的前缀。
 
 ### 测试用例 A：LOW 内容一票通过
 
@@ -129,7 +129,7 @@ npm run dev
 | 字段 | 值 |
 | --- | --- |
 | 作者 | Alice |
-| 标题 | `Ramp-up｜客服中心营业时间调整` |
+| 标题 | `Ramp-up v3｜客服中心营业时间调整` |
 | 风险 | `LOW` |
 | 正文 | `国庆期间客服中心服务时间调整为每日 09:00–18:00，在线客服入口保持不变。` |
 | 审核人 | Bob |
@@ -137,7 +137,7 @@ npm run dev
 
 #### 步骤 1：Alice 创建 LOW 内容
 
-切换为 Alice，进入“我的内容”，点击“创建内容”，填写标题和正文并选择 `LOW`。
+切换为 Alice，在统一工作台的“我发起的请求”队列点击“创建内容”，填写标题和正文并选择 `LOW`。
 
 ![Alice 填写 LOW 风险内容](docs/assets/ramp-up/01-low-create.png)
 
@@ -155,7 +155,7 @@ npm run dev
 
 #### 步骤 4：Bob 从待审队列打开内容
 
-切换为 Bob，进入“待我审核”。预期可以看到该内容及其 LOW 风险、作者、正文和当前审核进度；Alice 作为作者不能在自己的待审队列中审核它。
+切换为 Bob，在左侧“待我审核”语义队列打开请求。预期同一页面展示 LOW 风险、作者、请求流转、正文和当前进度，并出现本轮唯一一次的审核决定表单；Alice 作为作者不会在自己的待审队列中看到它。
 
 ![Bob 打开 LOW 待审核内容](docs/assets/ramp-up/04-low-bob-review.png)
 
@@ -171,7 +171,7 @@ Bob 填写可选意见“营业时间、服务入口和影响范围说明清晰�
 
 | 阶段 | 标题/正文或决定 |
 | --- | --- |
-| 初稿 | `Ramp-up｜账户注销与数据删除规则` |
+| 初稿 | `Ramp-up v3｜账户注销与数据删除规则` |
 | 初稿正文 | `用户提交账户注销申请后，我们会处理账户信息和相关数据。` |
 | R1 Bob | 通过；建议补充保留数据类型与期限 |
 | R1 Chen | 拒绝；缺少保留类型、期限和删除例外 |
@@ -223,7 +223,7 @@ Bob 填写可选意见“营业时间、服务入口和影响范围说明清晰�
 
 #### 步骤 13：重新提交，创建第二轮
 
-再次点击“提交审核”。预期创建全新的 `ROUND 2`，进度从 `0/2` 开始；页面同时展示 R2 修订快照和 R1 原始快照，旧轮票数不计入新轮。
+点击“重新提交”。预期创建全新的 `ROUND 2`，进度从 `0/2` 开始；统一详情面板同时展示 R2 修订快照和 R1 原始快照，旧轮票数不计入新轮。
 
 ![HIGH 内容重提后创建独立第二轮](docs/assets/ramp-up/13-high-round2.png)
 
@@ -237,13 +237,27 @@ Bob 审核修订稿并通过。预期 R2 进度为 `1/2`，内容继续处于“
 
 Chen 复核并通过。预期内容成为 `APPROVED`，R2 进度为 `2/2`；R2 显示 Bob、Chen 两位不同审核人的决定，R1 拒绝历史仍然存在。
 
-<img src="docs/assets/ramp-up/15-high-approved.png" alt="HIGH 第二轮两票通过并保留第一轮拒绝历史" width="420">
+<img src="docs/assets/ramp-up/15-high-approved.png" alt="HIGH 第二轮两票通过并保留第一轮拒绝历史" width="360">
 
 #### 步骤 16：Diana 以 ADMIN 身份核对完整历史
 
-切换为 Diana，在“全部内容”搜索该标题。预期可以查看工作副本、R1/R2 快照和四条审核决定，但页面不提供“通过”或“拒绝”按钮，因为 `ADMIN` 不自动拥有 `REVIEWER`。
+切换为 Diana，在左侧“全部请求”队列搜索该标题。预期可以查看工作副本、R1/R2 快照和四条审核决定，但详情面板不提供“通过”或“拒绝”按钮，因为 `ADMIN` 不自动拥有 `REVIEWER`。
 
 <img src="docs/assets/ramp-up/16-admin-history.png" alt="Diana 查看 HIGH 内容的完整两轮审核历史" width="360">
+
+### 测试用例 C：ADMIN 创建多角色用户
+
+#### 步骤 17：Diana 打开用户与角色管理
+
+保持 Diana 身份，点击页面右上角“用户与角色”。预期可以查看所有用户、内容数、审核数和角色；页面明确提示角色可以叠加、ADMIN 不自动获得审核权限，且用户不能删除以保护审计历史。
+
+<img src="docs/assets/ramp-up/17-admin-users.png" alt="Diana 查看用户与角色管理面板" width="720">
+
+#### 步骤 18：创建同时拥有提交和审核角色的用户
+
+展开“创建用户”，输入 `Eva Ramp-up v2`，同时选择 `SUBMITTER`、`REVIEWER` 并提交。预期新用户立即出现在用户切换入口，角色卡显示两个角色，内容数和审核数均为 0。
+
+<img src="docs/assets/ramp-up/18-admin-created-user.png" alt="ADMIN 创建拥有 SUBMITTER 和 REVIEWER 的演示用户" width="720">
 
 ### 完成后的检查点
 
@@ -252,6 +266,7 @@ Chen 复核并通过。预期内容成为 `APPROVED`，R2 进度为 `2/2`；R2 �
 - 拒绝理由非空，且 R1 的原始标题、正文和两条决定没有被修订稿覆盖。
 - HIGH R2 从 `0/2` 重新计票，并由 Bob、Chen 两位不同审核人完成 `2/2`。
 - Alice 不能自审；Diana 可以查看全部历史，但不能提交审核决定。
+- ADMIN 可以创建和维护多角色用户，但不能删除审计主体，也不能移除系统最后一位管理员。
 
 ## 验证
 
@@ -291,9 +306,11 @@ npm run build
 仓库使用 GitHub Actions 执行两段式流水线：
 
 - **CI**：Pull Request 和 `main` 分支提交均执行 `npm ci`、`npm run check`，随后构建生产 Docker 镜像并启动容器验证 `/api/health`。
-- **CD**：只有当前仓库 `main` 分支的 CI 全部成功后才会进入 `production` Environment。流水线构建不可变 release，通过 SSH 上传到腾讯云，原子切换 `current` 软链并重启单实例 systemd 服务；健康检查失败时恢复上一个 release。
+- **CD**：当前仓库 `main` 分支的 CI 全部成功后自动进入 `production` Environment，不再等待人工审批。流水线构建不可变 release，通过 SSH 上传到腾讯云，原子切换 `current` 软链并重启单实例 systemd 服务；健康检查失败时恢复上一个 release。
 
-生产部署需要先在 GitHub 中为 `production` Environment 配置审批人和部署分支保护，并设置 `PRODUCTION_HOST`、`PRODUCTION_USER`、`PRODUCTION_SSH_PRIVATE_KEY`、`PRODUCTION_SSH_KNOWN_HOSTS`。`SESSION_SECRET` 不经过 CI/CD，仍只保存在服务器的 `shared/reviewflow.env`。完整初始化和密钥配置见[腾讯云单机部署](deploy/tencent-cloud.md)。
+这里放宽的只有公开 Demo 的**人工审批**。CI 全量门禁、仅同仓库 `main` push 可发布、Environment 分支限制、生产 secrets 隔离、单实例串行发布和失败回滚仍然保留；Workflow 内也注释了这些边界。若接入真实内容或组织身份，应重新启用 required reviewers。
+
+生产部署需要先在 GitHub 中为 `production` Environment 配置 `main` 分支保护，并设置 `PRODUCTION_HOST`、`PRODUCTION_USER`、`PRODUCTION_SSH_PRIVATE_KEY`、`PRODUCTION_SSH_KNOWN_HOSTS`。`SESSION_SECRET` 不经过 CI/CD，仍只保存在服务器的 `shared/reviewflow.env`。完整初始化和密钥配置见[腾讯云单机部署](deploy/tencent-cloud.md)。
 
 当前 SQLite 架构只允许单应用实例，因此 CD 使用短暂停机重启，不执行多副本滚动发布。需要零停机或横向扩容时，应先迁移 PostgreSQL。
 

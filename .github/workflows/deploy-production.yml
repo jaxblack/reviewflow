@@ -10,6 +10,8 @@ on:
 permissions:
   contents: read
 
+# Never cancel an active single-instance release: it may already be switching
+# the current symlink or restarting systemd. Later verified releases wait here.
 concurrency:
   group: production
   cancel-in-progress: false
@@ -17,6 +19,8 @@ concurrency:
 jobs:
   deploy:
     name: Deploy verified main revision
+    # workflow_run can access production secrets. Keep all four checks so a
+    # successful fork, pull request, or non-main run can never deploy.
     if: >-
       github.event.workflow_run.conclusion == 'success' &&
       github.event.workflow_run.event == 'push' &&
@@ -24,18 +28,21 @@ jobs:
       github.event.workflow_run.head_repository.full_name == github.repository
     runs-on: ubuntu-24.04
     timeout-minutes: 15
+    # production scopes SSH secrets and only permits main. This public demo
+    # intentionally has no required reviewer, so a verified main run starts
+    # automatically. Re-enable reviewers before using this for real content.
     environment:
       name: production
       url: https://qlili.com/reviewflow/
 
     steps:
       - name: Check out verified revision
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           ref: ${{ github.event.workflow_run.head_sha }}
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: 24
           cache: npm
