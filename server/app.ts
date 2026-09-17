@@ -90,6 +90,7 @@ interface BuildAppOptions {
   sessionSecret?: string
   capacityLimits?: Partial<CapacityLimits>
   writeRateLimitMax?: number
+  beforeWriteRequest?: (request: FastifyRequest) => void | Promise<void>
 }
 
 interface IdempotentResult<T> {
@@ -202,6 +203,9 @@ export async function buildApp(
       max: writeRateLimitMax,
       timeWindow: 60_000,
     }),
+    ...(options.beforeWriteRequest
+      ? { preHandler: options.beforeWriteRequest }
+      : {}),
   }
 
   app.setErrorHandler((error, _request, reply) => {
