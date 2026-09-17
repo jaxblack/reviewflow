@@ -344,8 +344,8 @@ export function ContentDetail({
           </div>
         ) : (
           <div className="history-list">
-            {history.map((round, index) => (
-              <RoundHistory key={round.id} round={round} open={index === 0} />
+            {history.map((round) => (
+              <RoundHistory key={round.id} round={round} />
             ))}
           </div>
         )}
@@ -409,9 +409,9 @@ function RequestFlow({ detail }: { detail: ContentDetailData }) {
   )
 }
 
-function RoundHistory({ round, open }: { round: ReviewRound; open: boolean }) {
+function RoundHistory({ round }: { round: ReviewRound }) {
   return (
-    <details className="history-round" open={open}>
+    <details className="history-round" open>
       <summary>
         <span className="round-index">R{round.roundNo}</span>
         <span>

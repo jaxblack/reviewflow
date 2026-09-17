@@ -2,6 +2,7 @@ import {
   Activity,
   BookOpen,
   CheckCircle2,
+  ChevronsUpDown,
   CircleHelp,
   ClipboardCheck,
   FilePlus2,
@@ -668,7 +669,8 @@ function App() {
                 {isPresetUser(me.id) ? '预置账号' : '自定义账号'}
               </small>
             </div>
-            <label className="profile-switch">
+            <label className="profile-switch" title="切换当前操作人">
+              <ChevronsUpDown aria-hidden="true" />
               <span className="sr-only">切换当前用户</span>
               <select
                 value={me.id}

@@ -89,6 +89,7 @@ export function ContentEditor({
               maxLength={200}
               required
               autoFocus
+              placeholder="示例：会员续费提醒文案"
               onChange={(event) => setTitle(event.target.value)}
             />
           </label>
@@ -103,6 +104,7 @@ export function ContentEditor({
               maxLength={50_000}
               rows={10}
               required
+              placeholder="示例：说明通知对象、生效时间、关键规则和用户可执行的操作。"
               onChange={(event) => setBody(event.target.value)}
             />
           </label>
