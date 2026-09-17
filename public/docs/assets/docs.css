@@ -818,6 +818,10 @@ pre {
     display: none;
   }
 
+  .doc-sidebar a[aria-current='page'] {
+    order: -1;
+  }
+
   .doc-main {
     padding: 38px 24px 60px;
   }
