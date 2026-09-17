@@ -4,9 +4,21 @@ export type ContentStatus = 'DRAFT' | 'IN_REVIEW' | 'APPROVED' | 'REJECTED'
 export type RoundStatus = 'OPEN' | 'APPROVED' | 'REJECTED'
 export type DecisionType = 'APPROVE' | 'REJECT'
 export type ViewKey = 'mine' | 'pending' | 'all'
+export type WorkspaceQueue = 'MINE' | 'PENDING_REVIEW' | 'REVIEWED' | 'ADMIN'
 
 export interface User {
   id: string
+  name: string
+  roles: Role[]
+}
+
+export interface AdminUser extends User {
+  createdAt: string
+  contentCount: number
+  decisionCount: number
+}
+
+export interface AdminUserInput {
   name: string
   roles: Role[]
 }
@@ -28,7 +40,16 @@ export interface ContentSummary {
   author: { id: string; name: string }
   createdAt: string
   updatedAt: string
+  roundCount: number
   currentRound: ReviewProgress | null
+}
+
+export interface WorkspaceItem extends ContentSummary {
+  queues: WorkspaceQueue[]
+}
+
+export interface Workspace {
+  items: WorkspaceItem[]
 }
 
 export interface ReviewDecision {

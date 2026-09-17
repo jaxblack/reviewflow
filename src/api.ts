@@ -1,9 +1,12 @@
 import type {
+  AdminUser,
+  AdminUserInput,
   ContentDetail,
   ContentInput,
   ContentSummary,
   DecisionType,
   User,
+  Workspace,
 } from './types'
 
 export class ApiError extends Error {
@@ -56,6 +59,15 @@ function mutationInit(method: string, body: unknown): RequestInit {
 export const api = {
   users: () => request<User[]>('/api/users'),
   me: () => request<User>('/api/me'),
+  workspace: () => request<Workspace>('/api/workspace'),
+  adminUsers: () => request<AdminUser[]>('/api/admin/users'),
+  createUser: (input: AdminUserInput) =>
+    request<AdminUser>('/api/admin/users', mutationInit('POST', input)),
+  updateUser: (userId: string, input: AdminUserInput) =>
+    request<AdminUser>(
+      `/api/admin/users/${userId}`,
+      mutationInit('PATCH', input),
+    ),
   switchUser: (userId: string) =>
     request<User>('/api/session/switch', {
       method: 'POST',

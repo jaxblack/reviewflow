@@ -12,12 +12,15 @@ import type { DatabaseSync } from 'node:sqlite'
 import { z, ZodError } from 'zod'
 import { createDatabase, USER_IDS, withImmediateTransaction } from './db.js'
 import type {
+  ContentStatus,
   ContentRow,
   CurrentUser,
   DecisionRow,
   DecisionType,
+  Risk,
   Role,
   RoundContextRow,
+  RoundStatus,
 } from './types.js'
 
 const contentInputSchema = z
@@ -47,6 +50,19 @@ const switchUserSchema = z.object({ userId: z.string().min(1) }).strict()
 const idParamsSchema = z.object({ id: z.string().min(1) }).strict()
 const contentListQuerySchema = z
   .object({ scope: z.enum(['mine', 'all']).default('mine') })
+  .strict()
+const rolesSchema = z
+  .array(z.enum(['SUBMITTER', 'REVIEWER', 'ADMIN']))
+  .min(1)
+  .max(3)
+  .refine((roles) => new Set(roles).size === roles.length, {
+    message: '角色不能重复',
+  })
+const adminUserInputSchema = z
+  .object({
+    name: z.string().trim().min(1).max(80),
+    roles: rolesSchema,
+  })
   .strict()
 
 class ApiError extends Error {
@@ -80,6 +96,38 @@ interface SummaryRow extends ContentRow {
   round_status: string | null
   required_approvals: number | null
   approval_count: number
+  round_count: number
+}
+
+type WorkspaceQueue = 'MINE' | 'PENDING_REVIEW' | 'REVIEWED' | 'ADMIN'
+
+interface ContentSummaryDto {
+  id: string
+  title: string
+  risk: Risk
+  status: ContentStatus
+  version: number
+  author: { id: string; name: string }
+  createdAt: string
+  updatedAt: string
+  roundCount: number
+  currentRound: {
+    id: string
+    roundNo: number
+    status: RoundStatus
+    approvalCount: number
+    requiredApprovals: number
+  } | null
+}
+
+interface WorkspaceItemDto extends ContentSummaryDto {
+  queues: WorkspaceQueue[]
+}
+
+interface AdminUserDto extends CurrentUser {
+  createdAt: string
+  contentCount: number
+  decisionCount: number
 }
 
 interface HistoryRoundRow {
@@ -141,6 +189,75 @@ export async function buildApp(
   app.get('/api/users', () => listUsers(database))
 
   app.get('/api/me', (request) => getCurrentUser(database, request))
+
+  app.get('/api/admin/users', (request) => {
+    const user = getCurrentUser(database, request)
+    requireRole(user, 'ADMIN')
+    return listAdminUsers(database)
+  })
+
+  app.post('/api/admin/users', (request, reply) => {
+    const user = getCurrentUser(database, request)
+    requireRole(user, 'ADMIN')
+    const parsed = adminUserInputSchema.parse(request.body)
+    const input = { ...parsed, roles: [...parsed.roles].sort() as Role[] }
+    const key = getIdempotencyKey(request)
+
+    const result = executeIdempotent(
+      database,
+      user.id,
+      'CREATE_USER',
+      key,
+      input,
+      () => {
+        ensureUserNameAvailable(database, input.name)
+        const id = randomUUID()
+        database
+          .prepare(`
+            INSERT INTO users (id, display_name, created_at)
+            VALUES (?, ?, ?)
+          `)
+          .run(id, input.name, new Date().toISOString())
+        replaceUserRoles(database, id, input.roles)
+        return { statusCode: 201, body: getAdminUser(database, id) }
+      },
+    )
+    return sendIdempotent(reply, result)
+  })
+
+  app.patch('/api/admin/users/:id', (request, reply) => {
+    const user = getCurrentUser(database, request)
+    requireRole(user, 'ADMIN')
+    const { id } = idParamsSchema.parse(request.params)
+    const parsed = adminUserInputSchema.parse(request.body)
+    const input = { ...parsed, roles: [...parsed.roles].sort() as Role[] }
+    const key = getIdempotencyKey(request)
+
+    const result = executeIdempotent(
+      database,
+      user.id,
+      `UPDATE_USER:${id}`,
+      key,
+      input,
+      () => {
+        const target = getUser(database, id)
+        if (!target) throw new ApiError(404, 'USER_NOT_FOUND', '用户不存在')
+        ensureUserNameAvailable(database, input.name, id)
+        ensureRoleChangeAllowed(database, target, input.roles)
+        database
+          .prepare('UPDATE users SET display_name = ? WHERE id = ?')
+          .run(input.name, id)
+        replaceUserRoles(database, id, input.roles)
+        return { statusCode: 200, body: getAdminUser(database, id) }
+      },
+    )
+    return sendIdempotent(reply, result)
+  })
+
+  app.get('/api/workspace', (request) => {
+    const user = getCurrentUser(database, request)
+    return buildWorkspace(database, user)
+  })
 
   app.post('/api/session/switch', (request, reply) => {
     const input = switchUserSchema.parse(request.body)
@@ -343,17 +460,7 @@ export async function buildApp(
   app.get('/api/reviews/pending', (request) => {
     const user = getCurrentUser(database, request)
     requireRole(user, 'REVIEWER')
-    return listContentSummaries(
-      database,
-      `WHERE c.status = 'IN_REVIEW'
-        AND c.author_id <> ?
-        AND rr.status = 'OPEN'
-        AND NOT EXISTS (
-          SELECT 1 FROM review_decisions mine
-          WHERE mine.round_id = rr.id AND mine.reviewer_id = ?
-        )`,
-      [user.id, user.id],
-    )
+    return listPendingContentSummaries(database, user.id)
   })
 
   app.post('/api/review-rounds/:id/decisions', (request, reply) => {
@@ -592,6 +699,40 @@ function listUsers(database: DatabaseSync): CurrentUser[] {
   return rows.map(({ id }) => getUser(database, id) as CurrentUser)
 }
 
+function listAdminUsers(database: DatabaseSync): AdminUserDto[] {
+  const rows = database
+    .prepare('SELECT id FROM users ORDER BY display_name, id')
+    .all() as unknown as Array<{ id: string }>
+  return rows.map(({ id }) => getAdminUser(database, id))
+}
+
+function getAdminUser(database: DatabaseSync, userId: string): AdminUserDto {
+  const user = getUser(database, userId)
+  if (!user) throw new ApiError(404, 'USER_NOT_FOUND', '用户不存在')
+  const facts = database
+    .prepare(`
+      SELECT u.created_at,
+        (SELECT count(*) FROM contents c WHERE c.author_id = u.id) AS content_count,
+        (
+          SELECT count(*) FROM review_decisions rd
+          WHERE rd.reviewer_id = u.id
+        ) AS decision_count
+      FROM users u
+      WHERE u.id = ?
+    `)
+    .get(userId) as unknown as {
+      created_at: string
+      content_count: number
+      decision_count: number
+    }
+  return {
+    ...user,
+    createdAt: facts.created_at,
+    contentCount: facts.content_count,
+    decisionCount: facts.decision_count,
+  }
+}
+
 function getUser(database: DatabaseSync, userId: string): CurrentUser | null {
   const user = database
     .prepare('SELECT id, display_name FROM users WHERE id = ?')
@@ -603,6 +744,85 @@ function getUser(database: DatabaseSync, userId: string): CurrentUser | null {
     .prepare('SELECT role FROM user_roles WHERE user_id = ? ORDER BY role')
     .all(userId) as unknown as Array<{ role: Role }>
   return { id: user.id, name: user.display_name, roles: roleRows.map((row) => row.role) }
+}
+
+function ensureUserNameAvailable(
+  database: DatabaseSync,
+  name: string,
+  excludedUserId?: string,
+): void {
+  const existing = database
+    .prepare(`
+      SELECT 1 FROM users
+      WHERE display_name = ? COLLATE NOCASE
+        AND (? IS NULL OR id <> ?)
+      LIMIT 1
+    `)
+    .get(name, excludedUserId ?? null, excludedUserId ?? null)
+  if (existing) {
+    throw new ApiError(409, 'USER_NAME_EXISTS', '用户名称已经存在')
+  }
+}
+
+function ensureRoleChangeAllowed(
+  database: DatabaseSync,
+  target: CurrentUser,
+  nextRoles: Role[],
+): void {
+  if (target.roles.includes('ADMIN') && !nextRoles.includes('ADMIN')) {
+    const adminCount = database
+      .prepare(`
+        SELECT count(DISTINCT user_id) AS count
+        FROM user_roles WHERE role = 'ADMIN'
+      `)
+      .get() as unknown as { count: number }
+    if (adminCount.count <= 1) {
+      throw new ApiError(
+        409,
+        'LAST_ADMIN_REQUIRED',
+        '系统必须至少保留一位管理员',
+      )
+    }
+  }
+
+  if (target.roles.includes('REVIEWER') && !nextRoles.includes('REVIEWER')) {
+    const blockedRound = database
+      .prepare(`
+        SELECT rr.id
+        FROM review_rounds rr
+        JOIN contents c ON c.id = rr.content_id
+        WHERE rr.status = 'OPEN'
+          AND c.author_id <> ?
+          AND (
+            SELECT count(DISTINCT ur.user_id)
+            FROM user_roles ur
+            WHERE ur.role = 'REVIEWER'
+              AND ur.user_id <> c.author_id
+              AND ur.user_id <> ?
+          ) < rr.required_approvals
+        LIMIT 1
+      `)
+      .get(target.id, target.id)
+    if (blockedRound) {
+      throw new ApiError(
+        409,
+        'ROLE_CHANGE_BLOCKED',
+        '该角色仍是进行中审核所需的合法审核人',
+      )
+    }
+  }
+}
+
+function replaceUserRoles(
+  database: DatabaseSync,
+  userId: string,
+  roles: Role[],
+): void {
+  database.prepare('DELETE FROM user_roles WHERE user_id = ?').run(userId)
+  const insert = database.prepare(`
+    INSERT INTO user_roles (user_id, role) VALUES (?, ?)
+  `)
+  for (const role of roles) insert.run(userId, role)
 }
 
 function requireRole(user: CurrentUser, role: Role): void {
@@ -645,7 +865,7 @@ function listContentSummaries(
   database: DatabaseSync,
   where = '',
   params: string[] = [],
-): unknown[] {
+): ContentSummaryDto[] {
   const rows = database
     .prepare(`
       SELECT c.*, u.display_name AS author_name,
@@ -653,6 +873,10 @@ function listContentSummaries(
         rr.round_no AS current_round_no,
         rr.status AS round_status,
         rr.required_approvals,
+        (
+          SELECT count(*) FROM review_rounds history
+          WHERE history.content_id = c.id
+        ) AS round_count,
         coalesce((
           SELECT count(*) FROM review_decisions rd
           WHERE rd.round_id = rr.id AND rd.decision = 'APPROVE'
@@ -671,7 +895,78 @@ function listContentSummaries(
   return rows.map(toSummary)
 }
 
-function toSummary(row: SummaryRow): unknown {
+function listPendingContentSummaries(
+  database: DatabaseSync,
+  reviewerId: string,
+): ContentSummaryDto[] {
+  return listContentSummaries(
+    database,
+    `WHERE c.status = 'IN_REVIEW'
+      AND c.author_id <> ?
+      AND rr.status = 'OPEN'
+      AND NOT EXISTS (
+        SELECT 1 FROM review_decisions mine
+        WHERE mine.round_id = rr.id AND mine.reviewer_id = ?
+      )`,
+    [reviewerId, reviewerId],
+  )
+}
+
+function listReviewedContentSummaries(
+  database: DatabaseSync,
+  reviewerId: string,
+): ContentSummaryDto[] {
+  return listContentSummaries(
+    database,
+    `WHERE EXISTS (
+      SELECT 1
+      FROM review_decisions mine
+      JOIN review_rounds participated_round ON participated_round.id = mine.round_id
+      WHERE participated_round.content_id = c.id
+        AND mine.reviewer_id = ?
+    )`,
+    [reviewerId],
+  )
+}
+
+function buildWorkspace(
+  database: DatabaseSync,
+  user: CurrentUser,
+): { items: WorkspaceItemDto[] } {
+  const items = new Map<string, WorkspaceItemDto>()
+  const addItems = (queue: WorkspaceQueue, summaries: ContentSummaryDto[]) => {
+    for (const summary of summaries) {
+      const existing = items.get(summary.id)
+      if (existing) {
+        existing.queues.push(queue)
+      } else {
+        items.set(summary.id, { ...summary, queues: [queue] })
+      }
+    }
+  }
+
+  addItems(
+    'MINE',
+    listContentSummaries(database, 'WHERE c.author_id = ?', [user.id]),
+  )
+  if (user.roles.includes('REVIEWER')) {
+    addItems('PENDING_REVIEW', listPendingContentSummaries(database, user.id))
+    addItems('REVIEWED', listReviewedContentSummaries(database, user.id))
+  }
+  if (user.roles.includes('ADMIN')) {
+    addItems('ADMIN', listContentSummaries(database))
+  }
+
+  return {
+    items: [...items.values()].sort(
+      (left, right) =>
+        right.updatedAt.localeCompare(left.updatedAt) ||
+        left.id.localeCompare(right.id),
+    ),
+  }
+}
+
+function toSummary(row: SummaryRow): ContentSummaryDto {
   return {
     id: row.id,
     title: row.title,
@@ -681,16 +976,27 @@ function toSummary(row: SummaryRow): unknown {
     author: { id: row.author_id, name: row.author_name },
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+    roundCount: row.round_count,
     currentRound: row.current_round_id
       ? {
           id: row.current_round_id,
-          roundNo: row.current_round_no,
-          status: row.round_status,
+          roundNo: requireJoinedNumber(row.current_round_no, 'round number'),
+          status: row.round_status as RoundStatus,
           approvalCount: row.approval_count,
-          requiredApprovals: row.required_approvals,
+          requiredApprovals: requireJoinedNumber(
+            row.required_approvals,
+            'required approvals',
+          ),
         }
       : null,
   }
+}
+
+function requireJoinedNumber(value: number | null, field: string): number {
+  if (value === null) {
+    throw new Error(`Missing ${field} for joined review round`)
+  }
+  return value
 }
 
 function getContentDetail(

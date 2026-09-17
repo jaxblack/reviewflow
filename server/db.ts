@@ -22,6 +22,9 @@ CREATE TABLE IF NOT EXISTS user_roles (
   PRIMARY KEY (user_id, role)
 );
 
+CREATE UNIQUE INDEX IF NOT EXISTS users_display_name_unique
+  ON users(display_name COLLATE NOCASE);
+
 CREATE TABLE IF NOT EXISTS contents (
   id TEXT PRIMARY KEY,
   author_id TEXT NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
