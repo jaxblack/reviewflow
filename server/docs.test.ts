@@ -37,4 +37,30 @@ describe('HTML documentation', () => {
       }
     }
   })
+
+  it('keeps the edge-case register complete and aligned with API errors', () => {
+    const register = readFileSync(resolve(docsRoot, 'edge-cases.html'), 'utf8')
+    const source = readFileSync(resolve(process.cwd(), 'server/app.ts'), 'utf8')
+    const ids = [...register.matchAll(/<td>((?:B|I|S|R|H|Q)-\d{2})<\/td>/g)].map(
+      (match) => match[1],
+    )
+    const implementedErrors = new Set([
+      'INVALID_REQUEST',
+      'INTERNAL_ERROR',
+      ...[...source.matchAll(/new ApiError\(\s*\d+,\s*'([A-Z_]+)'/g)].map(
+        (match) => match[1],
+      ),
+    ])
+
+    expect(ids).toHaveLength(91)
+    expect(new Set(ids).size).toBe(ids.length)
+    for (const errorCode of implementedErrors) {
+      expect(register, `missing documented error: ${errorCode}`).toContain(
+        `<code>${errorCode}</code>`,
+      )
+    }
+    expect(register).toContain('ASSUMPTION')
+    expect(register).toContain('OUT OF SCOPE')
+    expect(register).toContain('OPEN')
+  })
 })

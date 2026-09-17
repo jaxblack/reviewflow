@@ -16,6 +16,10 @@
       "label": "系统设计"
     },
     {
+      "file": "edge-cases.html",
+      "label": "边界与决策"
+    },
+    {
       "file": "test-report.html",
       "label": "测试报告"
     },

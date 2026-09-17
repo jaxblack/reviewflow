@@ -418,6 +418,7 @@ reviewflow/
 | 文档 | 定位 |
 | --- | --- |
 | [HTML 文档中心](https://qlili.com/reviewflow/docs/) | 在线浏览系统设计、测试报告、验收报告和部署运行说明 |
+| [边界与决策](https://qlili.com/reviewflow/docs/edge-cases.html) | 原始歧义、权限可见性、状态版本、并发幂等、角色变化和待确认项 |
 | [HTML 生成与维护](docs/html-documentation.md) | 模板目录、manifest、生成命令、更新流程与故障排查 |
 | [当前实现架构](docs/architecture.md) | SQLite MVP 的状态机、数据模型、一致性和部署边界 |
 | [完整系统设计](docs/reviewflow-system-design.md) | PostgreSQL 目标模型、DDL、API、权限、事务与实施顺序 |

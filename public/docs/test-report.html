@@ -27,6 +27,7 @@
           <span class="nav-label">Documentation</span>
           <a href="./">文档中心</a>
           <a href="./design.html">系统设计</a>
+          <a href="./edge-cases.html">边界与决策</a>
           <a aria-current="page" href="./test-report.html">测试报告</a>
           <a href="./acceptance-report.html">验收报告</a>
           <a href="./operations.html">部署运行</a>
@@ -46,7 +47,7 @@
           </header>
 
           <div class="metric-strip" aria-label="测试结果摘要">
-            <div class="metric"><strong>20/20</strong><span>自动化测试</span></div>
+            <div class="metric"><strong>22/22</strong><span>自动化测试</span></div>
             <div class="metric"><strong>0</strong><span>Lint 警告</span></div>
             <div class="metric"><strong>0</strong><span>构建错误</span></div>
             <div class="metric"><strong>0</strong><span>浏览器错误</span></div>
@@ -60,7 +61,7 @@
                 <thead><tr><th>门禁</th><th>执行方式</th><th>结果</th><th>证据摘要</th></tr></thead>
                 <tbody>
                   <tr><td>静态检查</td><td><code>npm run lint</code></td><td><span class="status pass">PASS</span></td><td>0 warning，0 error</td></tr>
-                  <tr><td>自动化测试</td><td><code>npm test</code></td><td><span class="status pass">PASS</span></td><td>3 个测试文件，20 个测试全部通过</td></tr>
+                  <tr><td>自动化测试</td><td><code>npm test</code></td><td><span class="status pass">PASS</span></td><td>3 个测试文件，22 个测试全部通过</td></tr>
                   <tr><td>生产构建</td><td><code>npm run build</code></td><td><span class="status pass">PASS</span></td><td>React、Vite、服务端 TypeScript 全部通过</td></tr>
                   <tr><td>远端构建</td><td>Ubuntu Node 22.23.1</td><td><span class="status pass">PASS</span></td><td>同一 release 再次执行完整门禁</td></tr>
                   <tr><td>线上健康</td><td><code>GET /api/health</code></td><td><span class="status pass">PASS</span></td><td>HTTP 200，database=sqlite</td></tr>
@@ -91,7 +92,8 @@
                   <tr><td>T-12</td><td>严格写契约</td><td>拒绝客户端传入身份和工作流控制字段</td><td><span class="status pass">PASS</span></td></tr>
                   <tr><td>T-13</td><td>旧版本冲突</td><td>内容重新进入可编辑状态后，旧标签页仍被版本校验拒绝</td><td><span class="status pass">PASS</span></td></tr>
                   <tr><td>T-14</td><td>事务故障回滚</td><td>提交中途失败时快照、轮次和幂等记录同时回滚</td><td><span class="status pass">PASS</span></td></tr>
-                  <tr><td>T-15</td><td>HTML 文档契约</td><td>5 页结构、生成标记、结尾换行和本地链接持续有效</td><td><span class="status pass">PASS</span></td></tr>
+                  <tr><td>T-15</td><td>HTML 文档契约</td><td>6 页结构、生成标记、结尾换行和本地链接持续有效</td><td><span class="status pass">PASS</span></td></tr>
+                  <tr><td>T-16</td><td>边界登记契约</td><td>91 个 ID 唯一，全部服务端错误码已记录，决策级别完整</td><td><span class="status pass">PASS</span></td></tr>
                 </tbody>
               </table>
             </div>
