@@ -16,6 +16,7 @@ import {
 } from 'react'
 import { errorMessage } from '../api'
 import type { AdminUser, AdminUserInput, Role } from '../types'
+import { isPresetUser } from '../userPresentation'
 
 interface AdminUserPanelProps {
   users: AdminUser[]
@@ -112,7 +113,8 @@ export function AdminUserPanel({
         <ShieldCheck aria-hidden="true" />
         <p>
           角色可以叠加。ADMIN 只提供全量查看与用户管理权限，不会自动获得审核权限；
-          历史中的作者和审核人姓名始终保留当时快照。
+          历史中的作者和审核人姓名始终保留当时快照。“Eva Ramp-up”等非预置名称是公开
+          Demo 验收过程中创建的自定义账号。
         </p>
       </div>
 
@@ -292,7 +294,10 @@ function UserRoleEditor({
             onChange={(event) => setName(event.target.value)}
           />
         </label>
-        {isCurrent && <b>当前用户</b>}
+        <span className="admin-user-badges">
+          {isCurrent && <b>当前用户</b>}
+          {!isPresetUser(user.id) && <b className="custom-user-badge">自定义账号</b>}
+        </span>
       </div>
       <div className="admin-user-stats">
         <span>{user.contentCount} 条内容</span>

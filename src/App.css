@@ -122,6 +122,10 @@
   gap: 3px;
 }
 
+.status-nav {
+  margin-top: 15px;
+}
+
 .nav-label {
   padding: 0 10px 6px;
 }
@@ -190,8 +194,11 @@
 .sidebar-profile {
   min-width: 0;
   margin-top: 13px;
-  padding: 10px 8px 3px;
-  gap: 9px;
+  padding: 10px 6px 3px;
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr) 28px;
+  align-items: center;
+  gap: 8px;
   border-top: 1px solid var(--sidebar-line);
 }
 
@@ -214,31 +221,54 @@
   font-size: 11px;
 }
 
-.sidebar-profile label {
+.profile-copy {
   min-width: 0;
-  flex: 1;
   display: grid;
-  gap: 2px;
+  gap: 1px;
 }
 
-.sidebar-profile label > span {
+.profile-copy > span {
   color: #7f8b9d;
   font-size: 8px;
   font-weight: 700;
   text-transform: uppercase;
 }
 
-.sidebar-profile select {
-  width: 100%;
-  padding: 0 20px 0 0;
+.profile-copy strong {
+  overflow: hidden;
   color: #fff;
-  background: transparent;
-  border: 0;
-  font-size: 12px;
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.profile-copy small {
+  overflow: hidden;
+  color: var(--sidebar-muted);
+  font-size: 7px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.profile-switch {
+  width: 28px;
+  height: 30px;
+  overflow: hidden;
+}
+
+.profile-switch select {
+  width: 28px;
+  height: 30px;
+  padding: 0;
+  color: transparent;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--sidebar-line);
+  border-radius: 5px;
+  font-size: 8px;
   font-weight: 650;
 }
 
-.sidebar-profile select option {
+.profile-switch select option {
   color: var(--ink);
 }
 
@@ -578,7 +608,7 @@
 
 .filter-row {
   display: grid;
-  grid-template-columns: minmax(92px, 1fr) minmax(84px, 0.86fr) minmax(118px, 1.2fr) auto;
+  grid-template-columns: minmax(76px, 1fr) minmax(70px, 0.82fr) minmax(104px, 1.15fr) auto;
   gap: 5px;
 }
 
@@ -614,11 +644,31 @@
   padding-left: 25px;
 }
 
-.clear-filters {
-  width: 30px;
+.reset-filter-button {
   height: 30px;
+  padding: 0 7px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  color: #475467;
   background: var(--surface);
-  border-color: var(--line);
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  font-size: 8px;
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+.reset-filter-button:hover:not(:disabled) {
+  color: var(--primary);
+  background: var(--primary-soft);
+  border-color: var(--primary-line);
+}
+
+.reset-filter-button svg {
+  width: 11px;
+  height: 11px;
 }
 
 .quick-filters {
@@ -1907,7 +1957,8 @@ select:focus {
 }
 
 .editor-dialog,
-.admin-dialog {
+.admin-dialog,
+.guide-dialog {
   position: fixed;
   inset: 0 0 0 auto;
   max-width: calc(100vw - 224px);
@@ -1932,8 +1983,13 @@ select:focus {
   width: min(980px, calc(100vw - 224px));
 }
 
+.guide-dialog {
+  width: min(760px, calc(100vw - 224px));
+}
+
 .editor-dialog::backdrop,
-.admin-dialog::backdrop {
+.admin-dialog::backdrop,
+.guide-dialog::backdrop {
   background: rgba(16, 24, 40, 0.38);
   backdrop-filter: blur(1px);
 }
@@ -2300,15 +2356,26 @@ select:focus {
   font-weight: 650;
 }
 
-.admin-user-identity > b {
+.admin-user-badges {
   grid-column: 2;
-  width: fit-content;
   margin-top: -4px;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.admin-user-badges b {
+  width: fit-content;
   padding: 1px 4px;
   color: var(--primary);
   background: var(--primary-soft);
   border-radius: 3px;
   font-size: 7px;
+}
+
+.admin-user-badges .custom-user-badge {
+  color: var(--amber);
+  background: var(--amber-soft);
 }
 
 .admin-user-stats {
@@ -2419,6 +2486,164 @@ select:focus {
   min-height: 220px;
 }
 
+.guide-dialog {
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr);
+}
+
+.guide-header {
+  background: var(--surface);
+}
+
+.guide-intro {
+  padding: 9px 20px;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  color: var(--blue);
+  background: var(--blue-soft);
+  border-bottom: 1px solid var(--blue-line);
+}
+
+.guide-intro svg {
+  width: 14px;
+  height: 14px;
+  margin-top: 1px;
+}
+
+.guide-intro p {
+  margin: 0;
+  font-size: 9px;
+  line-height: 1.5;
+}
+
+.guide-intro a {
+  margin: 0 3px;
+  color: var(--primary);
+  font-weight: 700;
+}
+
+.guide-steps {
+  min-height: 0;
+  margin: 0;
+  padding: 18px 20px 28px;
+  display: grid;
+  align-content: start;
+  gap: 10px;
+  overflow-y: auto;
+  background: #f8fafc;
+  list-style: none;
+  counter-reset: guide;
+}
+
+.guide-steps > li {
+  position: relative;
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr);
+  gap: 9px;
+}
+
+.guide-step-number {
+  z-index: 1;
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  color: #fff;
+  background: var(--primary);
+  border: 4px solid #dbeafe;
+  border-radius: 50%;
+  font-size: 8px;
+  font-weight: 800;
+}
+
+.guide-steps > li:not(:last-child)::after {
+  content: "";
+  position: absolute;
+  top: 27px;
+  bottom: -11px;
+  left: 13px;
+  width: 2px;
+  background: #dbeafe;
+}
+
+.guide-step-content {
+  padding: 12px 13px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: var(--shadow-sm);
+}
+
+.guide-step-content > header {
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+}
+
+.guide-step-icon {
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  color: var(--primary);
+  background: var(--primary-soft);
+  border-radius: 6px;
+}
+
+.guide-step-icon svg {
+  width: 15px;
+  height: 15px;
+}
+
+.guide-step-content header > span:nth-child(2) {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.guide-step-content header small {
+  color: var(--muted);
+  font-size: 8px;
+}
+
+.guide-step-content header strong {
+  color: var(--ink-strong);
+  font-size: 11px;
+}
+
+.guide-step-content > ol {
+  margin: 10px 0 9px 38px;
+  padding-left: 14px;
+  color: #475467;
+  font-size: 9px;
+  line-height: 1.65;
+}
+
+.guide-step-content > p {
+  margin: 0 0 0 38px;
+  padding: 7px 8px;
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  color: var(--green);
+  background: var(--green-soft);
+  border-radius: 5px;
+  font-size: 8px;
+  line-height: 1.5;
+}
+
+.guide-step-content > p svg {
+  width: 12px;
+  height: 12px;
+  margin-top: 1px;
+}
+
+.guide-step-content > p strong {
+  font-weight: 750;
+}
+
 @keyframes spin {
   to {
     transform: rotate(360deg);
@@ -2476,7 +2701,8 @@ select:focus {
   }
 
   .editor-dialog,
-  .admin-dialog {
+  .admin-dialog,
+  .guide-dialog {
     max-width: calc(100vw - 206px);
   }
 }

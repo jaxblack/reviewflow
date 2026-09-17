@@ -2,6 +2,7 @@ import {
   Activity,
   BookOpen,
   CheckCircle2,
+  CircleHelp,
   ClipboardCheck,
   FilePlus2,
   Files,
@@ -10,6 +11,7 @@ import {
   Inbox,
   LayoutDashboard,
   RefreshCw,
+  RotateCcw,
   ShieldCheck,
   TriangleAlert,
   UsersRound,
@@ -22,6 +24,10 @@ import './App.css'
 import { AdminUserPanel } from './components/AdminUserPanel'
 import { ContentDetail } from './components/ContentDetail'
 import { ContentEditor } from './components/ContentEditor'
+import {
+  OnboardingGuide,
+  type GuideTarget,
+} from './components/OnboardingGuide'
 import {
   WorkspaceRequestList,
   type RiskFilter,
@@ -39,6 +45,11 @@ import type {
   WorkspaceScope,
   WorkspaceSort,
 } from './types'
+import {
+  formatRoleLabels,
+  formatUserOption,
+  isPresetUser,
+} from './userPresentation'
 
 interface ScopeDefinition {
   key: WorkspaceScope
@@ -106,6 +117,7 @@ function App() {
   const [detail, setDetail] = useState<ContentDetailData | null>(null)
   const [editor, setEditor] = useState<'create' | 'edit' | null>(null)
   const [adminOpen, setAdminOpen] = useState(false)
+  const [guideOpen, setGuideOpen] = useState(false)
   const [adminUsers, setAdminUsers] = useState<AdminUser[]>([])
   const [loadingAdmin, setLoadingAdmin] = useState(false)
   const [loadingWorkspace, setLoadingWorkspace] = useState(true)
@@ -196,13 +208,17 @@ function App() {
     }
   }
 
-  async function changeUser(userId: string) {
+  async function changeUser(
+    userId: string,
+    requestedCriteria: Partial<ViewCriteria> = {},
+  ) {
     const resetCriteria: ViewCriteria = {
       scope: 'ALL',
       query: '',
       status: 'ALL',
       risk: 'ALL',
       sort: 'PRIORITY',
+      ...requestedCriteria,
     }
     setBusy(true)
     setError('')
@@ -352,6 +368,18 @@ function App() {
     void loadAdminUsers()
   }
 
+  async function startGuideStep(target: GuideTarget) {
+    setGuideOpen(false)
+    await changeUser(target.userId, {
+      scope: target.scope,
+      query: target.query,
+      status: target.status,
+      risk: target.risk,
+    })
+    if (target.action === 'CREATE') setEditor('create')
+    if (target.action === 'ADMIN') openAdmin()
+  }
+
   async function createUser(input: AdminUserInput) {
     setBusy(true)
     setError('')
@@ -489,11 +517,18 @@ function App() {
   const pendingCount = items.filter((item) =>
     item.queues.includes('PENDING_REVIEW'),
   ).length
+  const canReview = me?.roles.includes('REVIEWER') ?? false
   const inReviewCount = items.filter((item) => item.status === 'IN_REVIEW').length
   const highRiskCount = items.filter(
     (item) => item.status === 'IN_REVIEW' && item.risk === 'HIGH',
   ).length
   const rejectedCount = items.filter((item) => item.status === 'REJECTED').length
+  const emptyTitle =
+    scope === 'PENDING_REVIEW' ? '当前没有可由你审核的请求' : '当前视图暂无请求'
+  const emptyDescription =
+    scope === 'PENDING_REVIEW'
+      ? '作者不能审核自己的内容；可切换 Bob 或 Chen 查看共享待审池。'
+      : '新的请求或符合条件的数据会显示在这里。'
 
   return (
     <div className="app-shell">
@@ -539,8 +574,68 @@ function App() {
           })}
         </nav>
 
+        <nav className="app-nav status-nav" aria-label="状态快捷视图">
+          <span className="nav-label">状态视图</span>
+          <button
+            type="button"
+            className={
+              scope === 'ALL' &&
+              statusFilter === 'IN_REVIEW' &&
+              riskFilter === 'ALL'
+                ? 'active'
+                : ''
+            }
+            onClick={() =>
+              applyView({ scope: 'ALL', status: 'IN_REVIEW', risk: 'ALL' })
+            }
+          >
+            <Activity aria-hidden="true" />
+            <span>审核中</span>
+            <b>{inReviewCount}</b>
+          </button>
+          <button
+            type="button"
+            className={
+              scope === 'ALL' &&
+              statusFilter === 'IN_REVIEW' &&
+              riskFilter === 'HIGH'
+                ? 'active'
+                : ''
+            }
+            onClick={() =>
+              applyView({ scope: 'ALL', status: 'IN_REVIEW', risk: 'HIGH' })
+            }
+          >
+            <TriangleAlert aria-hidden="true" />
+            <span>高风险待审</span>
+            <b>{highRiskCount}</b>
+          </button>
+          <button
+            type="button"
+            className={
+              scope === 'ALL' &&
+              statusFilter === 'REJECTED' &&
+              riskFilter === 'ALL'
+                ? 'active'
+                : ''
+            }
+            onClick={() =>
+              applyView({ scope: 'ALL', status: 'REJECTED', risk: 'ALL' })
+            }
+          >
+            <RotateCcw aria-hidden="true" />
+            <span>已拒绝可重提</span>
+            <b>{rejectedCount}</b>
+          </button>
+        </nav>
+
         <nav className="app-nav secondary-nav" aria-label="系统导航">
           <span className="nav-label">系统</span>
+          <button type="button" onClick={() => setGuideOpen(true)}>
+            <CircleHelp aria-hidden="true" />
+            <span>新手引导</span>
+            <b>5 步</b>
+          </button>
           {me?.roles.includes('ADMIN') && (
             <button type="button" onClick={openAdmin}>
               <UsersRound aria-hidden="true" />
@@ -558,8 +653,16 @@ function App() {
             <span className="profile-avatar" aria-hidden="true">
               {me.name.slice(0, 1).toLocaleUpperCase()}
             </span>
-            <label>
+            <div className="profile-copy">
               <span>当前操作人</span>
+              <strong>{me.name}</strong>
+              <small>
+                {formatRoleLabels(me.roles)} ·{' '}
+                {isPresetUser(me.id) ? '预置账号' : '自定义账号'}
+              </small>
+            </div>
+            <label className="profile-switch">
+              <span className="sr-only">切换当前用户</span>
               <select
                 value={me.id}
                 disabled={busy}
@@ -568,7 +671,7 @@ function App() {
               >
                 {users.map((user) => (
                   <option key={user.id} value={user.id}>
-                    {user.name}
+                    {formatUserOption(user)}
                   </option>
                 ))}
               </select>
@@ -637,18 +740,25 @@ function App() {
               type="button"
               className="metric-card metric-pending"
               onClick={() =>
-                applyView({
-                  scope: me?.roles.includes('REVIEWER')
-                    ? 'PENDING_REVIEW'
-                    : 'ALL',
-                  status: 'ALL',
-                  risk: 'ALL',
-                })
+                canReview
+                  ? applyView({
+                      scope: 'PENDING_REVIEW',
+                      status: 'ALL',
+                      risk: 'ALL',
+                    })
+                  : applyView({
+                      scope: 'ALL',
+                      status: 'IN_REVIEW',
+                      risk: 'ALL',
+                    })
               }
             >
               <span className="metric-icon"><Inbox aria-hidden="true" /></span>
-              <span><small>待我处理</small><strong>{pendingCount}</strong></span>
-              <em>需要审核决定</em>
+              <span>
+                <small>{canReview ? '待我处理' : '待审核总量'}</small>
+                <strong>{canReview ? pendingCount : inReviewCount}</strong>
+              </span>
+              <em>{canReview ? '需要审核决定' : '仅查看，不能审核'}</em>
             </button>
             <button
               type="button"
@@ -699,6 +809,8 @@ function App() {
             sort={sort}
             loading={loadingWorkspace}
             busy={busy}
+            emptyTitle={emptyTitle}
+            emptyDescription={emptyDescription}
             onQueryChange={(nextQuery) => applyView({ query: nextQuery })}
             onFiltersChange={(status, risk) => applyView({ status, risk })}
             onSortChange={(nextSort) => applyView({ sort: nextSort })}
@@ -771,6 +883,14 @@ function App() {
           </div>
         )}
       </div>
+
+      {guideOpen && (
+        <OnboardingGuide
+          busy={busy}
+          onClose={() => setGuideOpen(false)}
+          onStart={startGuideStep}
+        />
+      )}
 
       {editor && (
         <ContentEditor

@@ -1,6 +1,6 @@
 import type { DatabaseSync } from 'node:sqlite'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { createDatabase } from './db.js'
+import { createDatabase, USER_IDS } from './db.js'
 import { seedDemoData } from './seed-demo.js'
 
 describe('demo data seed', () => {
@@ -14,12 +14,12 @@ describe('demo data seed', () => {
 
   it('creates core scenarios and a realistic queue exactly once', () => {
     expect(seedDemoData(database, Date.UTC(2026, 8, 17, 12))).toEqual({
-      insertedContents: 48,
-      totalDemoContents: 48,
+      insertedContents: 56,
+      totalDemoContents: 56,
     })
     expect(seedDemoData(database, Date.UTC(2026, 8, 17, 13))).toEqual({
       insertedContents: 0,
-      totalDemoContents: 48,
+      totalDemoContents: 56,
     })
 
     const statuses = database.prepare(`
@@ -29,7 +29,7 @@ describe('demo data seed', () => {
     expect(statuses).toEqual([
       { status: 'APPROVED', count: 19 },
       { status: 'DRAFT', count: 9 },
-      { status: 'IN_REVIEW', count: 11 },
+      { status: 'IN_REVIEW', count: 19 },
       { status: 'REJECTED', count: 9 },
     ])
 
@@ -38,8 +38,8 @@ describe('demo data seed', () => {
       WHERE id LIKE 'demo-%' GROUP BY risk ORDER BY risk
     `).all()
     expect(risks).toEqual([
-      { risk: 'HIGH', count: 22 },
-      { risk: 'LOW', count: 26 },
+      { risk: 'HIGH', count: 26 },
+      { risk: 'LOW', count: 30 },
     ])
 
     const rounds = database.prepare(`
@@ -76,5 +76,27 @@ describe('demo data seed', () => {
       WHERE round_id = 'demo-concurrent-terminal-round-1'
     `).get() as unknown as { count: number }
     expect(terminalCount.count).toBe(1)
+
+    const pendingFor = (reviewerId: string) =>
+      (
+        database.prepare(`
+          SELECT count(*) AS count
+          FROM review_rounds rr
+          JOIN contents c ON c.id = rr.content_id
+          WHERE rr.status = 'OPEN'
+            AND c.status = 'IN_REVIEW'
+            AND c.author_id <> ?
+            AND NOT EXISTS (
+              SELECT 1 FROM review_decisions mine
+              WHERE mine.round_id = rr.id AND mine.reviewer_id = ?
+            )
+        `).get(reviewerId, reviewerId) as unknown as { count: number }
+      ).count
+
+    expect({
+      alice: pendingFor(USER_IDS.alice),
+      bob: pendingFor(USER_IDS.bob),
+      chen: pendingFor(USER_IDS.chen),
+    }).toEqual({ alice: 0, bob: 15, chen: 19 })
   })
 })

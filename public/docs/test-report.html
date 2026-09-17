@@ -82,7 +82,7 @@
                   <tr><td>T-02</td><td>HIGH 拒绝、修改与重提</td><td>第一票后保持 1/2；拒绝结束第一轮；旧快照保留；第二轮从 0 计票并由两人通过</td><td><span class="status pass">PASS</span></td></tr>
                   <tr><td>T-03</td><td>请求幂等</td><td>相同 key/请求返回原记录；相同 key/不同请求返回 409；内容只新增一次</td><td><span class="status pass">PASS</span></td></tr>
                   <tr><td>T-04</td><td>终态竞争</td><td>LOW 通过与拒绝竞争只有一个成功；历史仅保留成功决定；轮次与内容终态一致</td><td><span class="status pass">PASS</span></td></tr>
-                  <tr><td>T-05</td><td>演示数据幂等</td><td>首次生成 48 条，重复运行新增 0 条；状态与风险分布固定；多轮快照正确</td><td><span class="status pass">PASS</span></td></tr>
+                  <tr><td>T-05</td><td>演示数据幂等</td><td>首次生成 56 条，重复运行新增 0 条；19 条开放审核；多轮快照正确</td><td><span class="status pass">PASS</span></td></tr>
                   <tr><td>T-06</td><td>种子数据不变量</td><td>HIGH 进度正确；无作者自审；并发终态示例只有一条有效决定</td><td><span class="status pass">PASS</span></td></tr>
                   <tr><td>T-07</td><td>统一审核工作区</td><td>待办、已处理和可见内容按身份聚合并去重</td><td><span class="status pass">PASS</span></td></tr>
                   <tr><td>T-08</td><td>拒绝稿隐私</td><td>审核人不能看到作者尚未重新提交的工作副本修改</td><td><span class="status pass">PASS</span></td></tr>
@@ -107,7 +107,7 @@
             <h2>演示数据验证</h2>
             <div class="metric-strip" aria-label="演示数据分布">
               <div class="metric"><strong>9</strong><span>DRAFT</span></div>
-              <div class="metric"><strong>11</strong><span>IN_REVIEW</span></div>
+              <div class="metric"><strong>19</strong><span>IN_REVIEW</span></div>
               <div class="metric"><strong>19</strong><span>APPROVED</span></div>
               <div class="metric"><strong>9</strong><span>REJECTED</span></div>
             </div>
@@ -115,9 +115,9 @@
               <table>
                 <thead><tr><th>验证项</th><th>期望</th><th>线上结果</th></tr></thead>
                 <tbody>
-                  <tr><td>demo-* 总数</td><td>48</td><td><span class="status pass">48 / PASS</span></td></tr>
-                  <tr><td>LOW 风险</td><td>26</td><td><span class="status pass">26 / PASS</span></td></tr>
-                  <tr><td>HIGH 风险</td><td>22</td><td><span class="status pass">22 / PASS</span></td></tr>
+                  <tr><td>demo-* 总数</td><td>56</td><td><span class="status pass">56 / PASS</span></td></tr>
+                  <tr><td>LOW 风险</td><td>30</td><td><span class="status pass">30 / PASS</span></td></tr>
+                  <tr><td>HIGH 风险</td><td>26</td><td><span class="status pass">26 / PASS</span></td></tr>
                   <tr><td>拒绝后重提案例</td><td>2 轮，不同快照</td><td><span class="status pass">PASS</span></td></tr>
                   <tr><td>作者自审记录</td><td>0</td><td><span class="status pass">0 / PASS</span></td></tr>
                 </tbody>

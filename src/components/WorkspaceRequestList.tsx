@@ -3,9 +3,9 @@ import {
   Clock3,
   Inbox,
   RefreshCw,
+  RotateCcw,
   Search,
   SlidersHorizontal,
-  X,
 } from 'lucide-react'
 import { useEffect, useRef, type KeyboardEvent } from 'react'
 import type {
@@ -30,6 +30,8 @@ interface WorkspaceRequestListProps {
   sort: WorkspaceSort
   loading: boolean
   busy: boolean
+  emptyTitle: string
+  emptyDescription: string
   onQueryChange: (query: string) => void
   onFiltersChange: (status: StatusFilter, risk: RiskFilter) => void
   onSortChange: (sort: WorkspaceSort) => void
@@ -71,6 +73,8 @@ export function WorkspaceRequestList({
   sort,
   loading,
   busy,
+  emptyTitle,
+  emptyDescription,
   onQueryChange,
   onFiltersChange,
   onSortChange,
@@ -213,17 +217,16 @@ export function WorkspaceRequestList({
               <option value="TITLE_ASC">标题排序</option>
             </select>
           </label>
-          {hasFilters && (
-            <button
-              type="button"
-              className="icon-button clear-filters"
-              title="清除筛选"
-              aria-label="清除筛选"
-              onClick={onResetFilters}
-            >
-              <X aria-hidden="true" />
-            </button>
-          )}
+          <button
+            type="button"
+            className="reset-filter-button"
+            title="重置搜索、状态和风险筛选"
+            disabled={!hasFilters}
+            onClick={onResetFilters}
+          >
+            <RotateCcw aria-hidden="true" />
+            重置筛选
+          </button>
         </div>
 
         <div className="quick-filters" aria-label="快捷筛选">
@@ -274,8 +277,8 @@ export function WorkspaceRequestList({
           <span className="empty-icon">
             <Inbox aria-hidden="true" />
           </span>
-          <strong>{hasFilters ? '没有匹配的请求' : '当前队列为空'}</strong>
-          <p>{hasFilters ? '调整搜索或筛选条件后重试。' : '新的审核请求会显示在这里。'}</p>
+          <strong>{hasFilters ? '没有匹配的请求' : emptyTitle}</strong>
+          <p>{hasFilters ? '调整条件或点击“重置筛选”后重试。' : emptyDescription}</p>
           {hasFilters && (
             <button type="button" className="button secondary compact-button" onClick={onResetFilters}>
               清除筛选

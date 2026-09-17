@@ -42,6 +42,7 @@ tar -xzf "$archive" -C "$release_dir"
 (
   cd "$release_dir"
   npm ci --omit=dev --ignore-scripts
+  DATA_DIR="$app_root/shared/data" npm run seed:demo
 )
 
 install -m 0644 "$release_dir/deploy/reviewflow.service" "$service_file"

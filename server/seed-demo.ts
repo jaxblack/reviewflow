@@ -175,6 +175,14 @@ const supplementalItems: SupplementalItem[] = [
   { slug: 'payment-method', title: '新增支付方式公告', body: '介绍新增支付渠道、支持范围、退款路径和安全提示。', risk: 'LOW', status: 'APPROVED' },
   { slug: 'risk-notice', title: '风控策略用户告知', body: '说明异常交易核验场景、可能采取的限制措施和申诉渠道。', risk: 'HIGH', status: 'IN_REVIEW' },
   { slug: 'monthly-summary', title: '月度运营总结', body: '汇总本月内容发布、用户反馈和下月优化事项。', risk: 'LOW', status: 'DRAFT' },
+  { slug: 'ai-content-policy', title: 'AI 内容使用说明', body: '说明生成式 AI 辅助内容的标识要求、人工复核责任和禁止使用场景。', risk: 'HIGH', status: 'IN_REVIEW' },
+  { slug: 'service-status-page', title: '服务状态页公告', body: '说明服务状态页的事件级别、更新时间、订阅方式和恢复确认标准。', risk: 'LOW', status: 'IN_REVIEW' },
+  { slug: 'biometric-login', title: '生物识别登录说明', body: '说明指纹和面容信息的本地处理方式、失败回退方案和设备兼容范围。', risk: 'HIGH', status: 'IN_REVIEW' },
+  { slug: 'delivery-delay', title: '物流延迟通知', body: '说明受影响区域、预计延迟时间、订单查询入口和补偿规则。', risk: 'LOW', status: 'IN_REVIEW' },
+  { slug: 'enterprise-sharing', title: '企业数据共享条款', body: '说明企业管理员可见数据、共享目的、保存期限和成员退出后的处理方式。', risk: 'HIGH', status: 'IN_REVIEW' },
+  { slug: 'support-followup', title: '客服满意度回访', body: '说明回访触发条件、调查内容、联系方式和拒绝后不再打扰的规则。', risk: 'LOW', status: 'IN_REVIEW' },
+  { slug: 'minor-campaign', title: '未成年人活动规则', body: '说明参与年龄、监护人同意、奖励限制和异常退款处理流程。', risk: 'HIGH', status: 'IN_REVIEW' },
+  { slug: 'feature-rollout', title: '功能灰度发布通知', body: '说明灰度范围、功能差异、反馈入口和回退安排。', risk: 'LOW', status: 'IN_REVIEW' },
 ]
 
 function createSupplementalFixtures(): ContentFixture[] {

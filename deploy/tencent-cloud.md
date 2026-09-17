@@ -86,7 +86,7 @@ ssh-keyscan -H SERVER_IP > ./reviewflow-known-hosts
 
 ### 4. 发布与回滚
 
-合并到 `main` 后，CI 成功会自动触发 production deployment。流水线以 `<commit-sha>-<run-attempt>` 创建 release，安装锁定的生产依赖，更新 systemd unit，原子切换 `current` 并检查本机健康端点。
+合并到 `main` 后，CI 成功会自动触发 production deployment。流水线以 `<commit-sha>-<run-attempt>` 创建 release，安装锁定的生产依赖，向共享数据库幂等补齐缺失的 `demo-*` 固定数据，更新 systemd unit，原子切换 `current` 并检查本机健康端点。补种不会覆盖访问者已经修改的内容或自定义用户。
 
 自动发布只放宽人工审批，以下门禁仍然强制执行：
 
