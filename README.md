@@ -116,6 +116,142 @@ npm run dev
 
 开发模式提供默认会话密钥，仅用于本地运行。生产环境必须显式设置安全的 `SESSION_SECRET`。
 
+## 10 分钟 Ramp-up：走完核心审核流程
+
+下面不是静态样例，而是 2026-09-17 在[在线 Demo](https://qlili.com/reviewflow/)实际执行并截图的两条测试用例。它们覆盖创建、提交、分级审核、拒绝、修改重提、不可变历史和 ADMIN 只读查看。在线环境是共享的，队列数字和时间可能变化；复现时建议给标题加上自己的前缀。
+
+### 测试用例 A：LOW 内容一票通过
+
+**测试数据**
+
+| 字段 | 值 |
+| --- | --- |
+| 作者 | Alice |
+| 标题 | `Ramp-up｜客服中心营业时间调整` |
+| 风险 | `LOW` |
+| 正文 | `国庆期间客服中心服务时间调整为每日 09:00–18:00，在线客服入口保持不变。` |
+| 审核人 | Bob |
+| 预期状态 | `DRAFT → IN_REVIEW (0/1) → APPROVED (1/1)` |
+
+#### 步骤 1：Alice 创建 LOW 内容
+
+切换为 Alice，进入“我的内容”，点击“创建内容”，填写标题和正文并选择 `LOW`。
+
+![Alice 填写 LOW 风险内容](docs/assets/ramp-up/01-low-create.png)
+
+#### 步骤 2：保存草稿
+
+点击“保存”。预期内容状态为“草稿”，可以继续编辑或提交审核，审核历史为 0 轮。
+
+![LOW 内容保存为草稿](docs/assets/ramp-up/02-low-draft.png)
+
+#### 步骤 3：提交第一轮审核
+
+点击“提交审核”。预期创建 `ROUND 1`，内容变为“审核中”，当前进度为 `0/1`，提交快照进入审核历史。
+
+![LOW 内容进入第一轮审核](docs/assets/ramp-up/03-low-in-review.png)
+
+#### 步骤 4：Bob 从待审队列打开内容
+
+切换为 Bob，进入“待我审核”。预期可以看到该内容及其 LOW 风险、作者、正文和当前审核进度；Alice 作为作者不能在自己的待审队列中审核它。
+
+![Bob 打开 LOW 待审核内容](docs/assets/ramp-up/04-low-bob-review.png)
+
+#### 步骤 5：Bob 通过，内容完成审核
+
+Bob 填写可选意见“营业时间、服务入口和影响范围说明清晰，同意发布。”并点击“通过”。预期内容立即变为“已通过”，进度为 `1/1`，历史记录 Bob 的决定。
+
+![LOW 内容一票通过](docs/assets/ramp-up/05-low-approved.png)
+
+### 测试用例 B：HIGH 内容拒绝后修改重提
+
+**测试数据**
+
+| 阶段 | 标题/正文或决定 |
+| --- | --- |
+| 初稿 | `Ramp-up｜账户注销与数据删除规则` |
+| 初稿正文 | `用户提交账户注销申请后，我们会处理账户信息和相关数据。` |
+| R1 Bob | 通过；建议补充保留数据类型与期限 |
+| R1 Chen | 拒绝；缺少保留类型、期限和删除例外 |
+| 修订稿 | 标题增加“（修订版）”，正文补充 7 日冷静期、5 年交易记录、30 日身份材料和争议处理例外 |
+| R2 Bob / Chen | 两位审核人分别通过 |
+| 预期状态 | `DRAFT → R1 1/2 → REJECTED → R2 0/2 → 1/2 → APPROVED 2/2` |
+
+#### 步骤 6：Alice 创建 HIGH 内容
+
+切换为 Alice，创建内容并选择 `HIGH · 两人通过`。初稿故意没有写明数据保留期限和删除例外。
+
+![Alice 填写 HIGH 风险内容](docs/assets/ramp-up/06-high-create.png)
+
+#### 步骤 7：保存 HIGH 草稿
+
+保存后预期状态为“草稿”、风险为 `HIGH`，尚未创建审核轮次。
+
+![HIGH 内容保存为草稿](docs/assets/ramp-up/07-high-draft.png)
+
+#### 步骤 8：提交第一轮审核
+
+提交后预期进入 `ROUND 1`，进度为 `0/2`。本轮阈值和初稿快照从此冻结。
+
+![HIGH 内容进入第一轮审核](docs/assets/ramp-up/08-high-round1.png)
+
+#### 步骤 9：Bob 给出第一票通过
+
+切换为 Bob，通过该内容并建议补充保留期限。预期内容仍为“审核中”，进度变为 `1/2`，不会因为一票通过提前结束。
+
+![HIGH 第一轮 Bob 通过后仍待审核](docs/assets/ramp-up/09-high-bob-approved.png)
+
+#### 步骤 10：Chen 拒绝第一轮
+
+切换为 Chen，填写非空拒绝理由并点击“拒绝”。预期当前轮次立即结束，内容变为 `REJECTED`；Bob 的通过和 Chen 的拒绝都保留在 R1。
+
+![HIGH 第一轮被 Chen 拒绝](docs/assets/ramp-up/10-high-chen-rejected.png)
+
+#### 步骤 11：Alice 修改被拒绝内容
+
+切换回 Alice，点击“编辑”，把标题改为“修订版”，并补充保留期限、删除时点和法律例外。
+
+![Alice 修改被拒绝的 HIGH 内容](docs/assets/ramp-up/11-high-edit.png)
+
+#### 步骤 12：保存修订稿
+
+保存后内容仍为 `REJECTED`，不会自动开始新一轮。工作副本显示修订内容，而 R1 历史仍指向原始标题和原始正文。
+
+![修订稿保存后仍为已拒绝](docs/assets/ramp-up/12-high-revised.png)
+
+#### 步骤 13：重新提交，创建第二轮
+
+再次点击“提交审核”。预期创建全新的 `ROUND 2`，进度从 `0/2` 开始；页面同时展示 R2 修订快照和 R1 原始快照，旧轮票数不计入新轮。
+
+![HIGH 内容重提后创建独立第二轮](docs/assets/ramp-up/13-high-round2.png)
+
+#### 步骤 14：Bob 通过第二轮
+
+Bob 审核修订稿并通过。预期 R2 进度为 `1/2`，内容继续处于“审核中”。
+
+![HIGH 第二轮 Bob 给出第一票](docs/assets/ramp-up/14-high-round2-bob.png)
+
+#### 步骤 15：Chen 给出第二票，内容通过
+
+Chen 复核并通过。预期内容成为 `APPROVED`，R2 进度为 `2/2`；R2 显示 Bob、Chen 两位不同审核人的决定，R1 拒绝历史仍然存在。
+
+<img src="docs/assets/ramp-up/15-high-approved.png" alt="HIGH 第二轮两票通过并保留第一轮拒绝历史" width="420">
+
+#### 步骤 16：Diana 以 ADMIN 身份核对完整历史
+
+切换为 Diana，在“全部内容”搜索该标题。预期可以查看工作副本、R1/R2 快照和四条审核决定，但页面不提供“通过”或“拒绝”按钮，因为 `ADMIN` 不自动拥有 `REVIEWER`。
+
+<img src="docs/assets/ramp-up/16-admin-history.png" alt="Diana 查看 HIGH 内容的完整两轮审核历史" width="360">
+
+### 完成后的检查点
+
+- LOW 内容只有 Bob 一票，终态为 `APPROVED 1/1`。
+- HIGH R1 在 Bob 通过后仍保持 `IN_REVIEW`，Chen 拒绝后立即成为 `REJECTED`。
+- 拒绝理由非空，且 R1 的原始标题、正文和两条决定没有被修订稿覆盖。
+- HIGH R2 从 `0/2` 重新计票，并由 Bob、Chen 两位不同审核人完成 `2/2`。
+- Alice 不能自审；Diana 可以查看全部历史，但不能提交审核决定。
+
+
 ## 验证
 
 运行完整本地门禁：
