@@ -17,7 +17,7 @@ export interface GuideTarget {
   query: string
   status: 'ALL' | 'DRAFT' | 'IN_REVIEW' | 'APPROVED' | 'REJECTED'
   risk: 'ALL' | Risk
-  action?: 'CREATE' | 'SUBMIT' | 'ADMIN'
+  action?: 'CREATE' | 'SUBMIT'
 }
 
 interface OnboardingGuideProps {
@@ -41,7 +41,7 @@ const guideSteps: Array<{
     title: '创建草稿',
     icon: FilePlus2,
     operations: [
-      '填写标题、正文和风险等级并保存草稿。',
+      '填写任意标题和正文，风险选择 HIGH，然后保存草稿。',
       '确认详情状态仍为“草稿”，内容可以继续编辑。',
     ],
     expected: '内容保持 DRAFT，尚未产生审核轮次和不可变快照。',
@@ -60,14 +60,14 @@ const guideSteps: Array<{
     title: '提交审核',
     icon: Send,
     operations: [
-      '保持刚创建的草稿，或打开“周末运营排期草稿”。',
+      '保持刚创建的草稿；它默认位于最近更新列表首位。',
       '在详情确认工作副本后点击“提交审核”。',
     ],
     expected: '内容进入 IN_REVIEW，并创建 R1 不可变快照。',
     target: {
       userId: 'user-alice',
       scope: 'MINE',
-      query: '周末运营排期草稿',
+      query: '',
       status: 'DRAFT',
       risk: 'ALL',
       action: 'SUBMIT',
@@ -76,19 +76,19 @@ const guideSteps: Array<{
   {
     actor: 'Bob',
     role: '审核人',
-    title: '完成 LOW 风险审核',
+    title: '完成 HIGH 第一票审核',
     icon: UserCheck,
     operations: [
-      '进入“待我审核”，打开“服务状态页公告”。',
+      '进入“待我审核”，打开列表首条最新请求。',
       '填写可选意见并点击“通过”。',
     ],
-    expected: 'LOW 内容达到 1/1，轮次和内容同时变为 APPROVED。',
+    expected: 'HIGH 内容保持 IN_REVIEW，R1 进度变为 1/2。',
     target: {
       userId: 'user-bob',
       scope: 'PENDING_REVIEW',
-      query: '服务状态页公告',
-      status: 'ALL',
-      risk: 'ALL',
+      query: '',
+      status: 'IN_REVIEW',
+      risk: 'HIGH',
     },
   },
   {
@@ -97,16 +97,16 @@ const guideSteps: Array<{
     title: '验证 HIGH 风险拒绝',
     icon: Send,
     operations: [
-      '打开高风险的“AI 内容使用说明”。',
+      '进入“待我审核”，打开列表首条最新请求。',
       '填写非空理由后点击“拒绝”。',
     ],
     expected: '任意合法拒绝立即结束 R1，拒绝理由完整保留在历史。',
     target: {
       userId: 'user-chen',
       scope: 'PENDING_REVIEW',
-      query: 'AI 内容使用说明',
-      status: 'ALL',
-      risk: 'ALL',
+      query: '',
+      status: 'IN_REVIEW',
+      risk: 'HIGH',
     },
   },
   {
@@ -115,16 +115,16 @@ const guideSteps: Array<{
     title: '修改并重新提交',
     icon: Pencil,
     operations: [
-      '在“我的提交”筛选已拒绝内容。',
+      '进入“我的提交”，打开列表首条最新的已拒绝内容。',
       '编辑正文或风险后保存，再点击“重新提交”。',
     ],
     expected: '创建全新的审核轮次，旧轮决定不计入新轮票数。',
     target: {
       userId: 'user-alice',
       scope: 'MINE',
-      query: '图片授权说明不足',
+      query: '',
       status: 'REJECTED',
-      risk: 'ALL',
+      risk: 'HIGH',
     },
   },
   {
@@ -133,17 +133,16 @@ const guideSteps: Array<{
     title: '审计历史与管理权限',
     icon: ShieldCheck,
     operations: [
-      '查看“用户通知模板（修订版）”的两轮快照。',
+      '打开列表首条最新请求，查看 R1/R2 快照。',
       '从“用户与权限”确认预置和自定义账号及角色。',
     ],
     expected: 'ADMIN 可查看和管理，但没有 REVIEWER 时不出现审核操作。',
     target: {
       userId: 'user-diana',
       scope: 'ALL',
-      query: '用户通知模板',
+      query: '',
       status: 'ALL',
       risk: 'ALL',
-      action: 'ADMIN',
     },
   },
 ]

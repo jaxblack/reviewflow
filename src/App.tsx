@@ -130,7 +130,7 @@ function App() {
   const [query, setQuery] = useState('')
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('ALL')
   const [riskFilter, setRiskFilter] = useState<RiskFilter>('ALL')
-  const [sort, setSort] = useState<WorkspaceSort>('PRIORITY')
+  const [sort, setSort] = useState<WorkspaceSort>('UPDATED_DESC')
   const initialized = useRef(false)
   const workspaceRequest = useRef(0)
   const detailRequest = useRef(0)
@@ -217,7 +217,7 @@ function App() {
       query: '',
       status: 'ALL',
       risk: 'ALL',
-      sort: 'PRIORITY',
+      sort: 'UPDATED_DESC',
       ...requestedCriteria,
     }
     setBusy(true)
@@ -385,7 +385,6 @@ function App() {
       risk: target.risk,
     })
     if (target.action === 'CREATE') setEditor('create')
-    if (target.action === 'ADMIN') openAdmin()
   }
 
   async function createUser(input: AdminUserInput) {
@@ -468,7 +467,7 @@ function App() {
           query: '',
           status: 'ALL',
           risk: 'ALL',
-          sort: 'PRIORITY',
+          sort: 'UPDATED_DESC',
         }
         const nextId =
           selectWorkspaceItems(workspace.items, initialCriteria)[0]?.id ?? null

@@ -97,18 +97,18 @@
           <section class="doc-section" id="guided-acceptance">
             <p class="eyebrow">03 / Guided acceptance</p>
             <h2>七步复现完整审核闭环</h2>
-            <div class="callout"><strong>准备：</strong>打开工作台左侧“新手引导”，或按下表操作。为标题添加当前时间，例如“验收-2157-高风险内容”，避免与公开 Demo 中其他访问者的数据混淆。</div>
+            <div class="callout"><strong>准备：</strong>打开工作台左侧“新手引导”，或按下表操作。请求默认按最近更新时间倒序排列，新建或刚处理的内容会出现在对应队列首位，无需填写或搜索固定示例标题。</div>
             <div class="table-wrap">
               <table>
                 <thead><tr><th>步骤</th><th>操作人</th><th>具体操作</th><th>预期结果</th></tr></thead>
                 <tbody>
                   <tr><td>1</td><td>Alice · 提交人</td><td>点击“新建内容”，填写唯一标题和正文，风险选择 HIGH，然后只点击“保存”。</td><td>状态保持 DRAFT；可以继续编辑，且尚未创建 revision 和审核轮次。</td></tr>
                   <tr><td>2</td><td>Alice · 提交人</td><td>在刚创建的草稿详情确认工作副本，点击“提交审核”。</td><td>状态进入 IN_REVIEW；详情显示 R1、0/2 和不可变提交快照。</td></tr>
-                  <tr><td>3</td><td>Bob · 审核人</td><td>切换 Bob，进入“待我审核”，搜索步骤 1 的标题，填写意见并点击“通过”。</td><td>内容仍为 IN_REVIEW；R1 进度变为 1/2，Bob 决定进入历史。</td></tr>
-                  <tr><td>4</td><td>Chen · 审核人</td><td>切换 Chen，搜索同一标题，填写非空拒绝理由并点击“拒绝”。</td><td>R1 和内容同时 REJECTED；Bob 的通过和 Chen 的拒绝都保留。</td></tr>
-                  <tr><td>5</td><td>Alice · 提交人</td><td>切换 Alice，在“我的提交”搜索标题，编辑正文后保存并点击“重新提交”。</td><td>创建 R2；进度从 0/2 开始，R1 的票不进入 R2。</td></tr>
+                  <tr><td>3</td><td>Bob · 审核人</td><td>切换 Bob，进入“待我审核”，打开首条最新请求，填写意见并点击“通过”。</td><td>内容仍为 IN_REVIEW；R1 进度变为 1/2，Bob 决定进入历史。</td></tr>
+                  <tr><td>4</td><td>Chen · 审核人</td><td>切换 Chen，打开首条最新请求，填写非空拒绝理由并点击“拒绝”。</td><td>R1 和内容同时 REJECTED；Bob 的通过和 Chen 的拒绝都保留。</td></tr>
+                  <tr><td>5</td><td>Alice · 提交人</td><td>切换 Alice，在“我的提交”打开首条最新的已拒绝请求，编辑正文后保存并点击“重新提交”。</td><td>创建 R2；进度从 0/2 开始，R1 的票不进入 R2。</td></tr>
                   <tr><td>6</td><td>Bob + Chen</td><td>Bob 和 Chen 依次在 R2 点击“通过”。</td><td>第一票后保持 IN_REVIEW；第二票后 R2 和内容同时 APPROVED。</td></tr>
-                  <tr><td>7</td><td>Diana · 管理员</td><td>切换 Diana，搜索标题，对比 R1/R2 快照并导出审计；再打开“用户与权限”。</td><td>可查看两轮完整历史和成员角色，但仅凭 ADMIN 不出现审核按钮。</td></tr>
+                  <tr><td>7</td><td>Diana · 管理员</td><td>切换 Diana，打开首条最新请求，对比 R1/R2 快照并导出审计；再打开“用户与权限”。</td><td>可查看两轮完整历史和成员角色，但仅凭 ADMIN 不出现审核按钮。</td></tr>
                 </tbody>
               </table>
             </div>

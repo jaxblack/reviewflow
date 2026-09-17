@@ -211,8 +211,8 @@ export function WorkspaceRequestList({
               value={sort}
               onChange={(event) => onSortChange(event.target.value as WorkspaceSort)}
             >
-              <option value="PRIORITY">智能优先级</option>
               <option value="UPDATED_DESC">最近更新</option>
+              <option value="PRIORITY">智能优先级</option>
               <option value="UPDATED_ASC">最早更新</option>
               <option value="TITLE_ASC">标题排序</option>
             </select>
