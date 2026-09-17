@@ -104,8 +104,8 @@
               <table>
                 <thead><tr><th>步骤</th><th>操作人</th><th>具体操作</th><th>预期结果</th></tr></thead>
                 <tbody>
-                  <tr><td>1</td><td>Alice · 提交人</td><td>点击“新建内容”，填写唯一标题和正文，风险选择 HIGH，然后只点击“保存”。</td><td>状态保持 DRAFT；可以继续编辑，且尚未创建 revision 和审核轮次。</td></tr>
-                  <tr><td>2</td><td>Alice · 提交人</td><td>在刚创建的草稿详情确认工作副本，点击“提交审核”。</td><td>状态进入 IN_REVIEW；详情显示 R1、0/2 和不可变提交快照。</td></tr>
+                  <tr><td>1</td><td>Alice · 提交人</td><td>点击“新建内容”，填写唯一标题和正文，风险选择 HIGH，然后点击“暂存草稿”。</td><td>状态保持 DRAFT；可以继续编辑，且尚未创建 revision 和审核轮次。</td></tr>
+                  <tr><td>2</td><td>Alice · 提交人</td><td>完整验收在草稿详情点击“提交审核”；日常操作也可在创建表单点击“直接提交审核”。</td><td>状态进入 IN_REVIEW；详情显示 R1、0/2 和不可变提交快照。</td></tr>
                   <tr><td>3</td><td>Bob · 审核人</td><td>切换 Bob，进入“待我审核”，打开首条最新请求，填写意见并点击“通过”。</td><td>内容仍为 IN_REVIEW；R1 进度变为 1/2，Bob 决定进入历史。</td></tr>
                   <tr><td>4</td><td>Chen · 审核人</td><td>切换 Chen，打开首条最新请求，填写非空拒绝理由并点击“拒绝”。</td><td>R1 和内容同时 REJECTED；Bob 的通过和 Chen 的拒绝都保留。</td></tr>
                   <tr><td>5</td><td>Alice · 提交人</td><td>切换 Alice，在“我的提交”打开首条最新的已拒绝请求，编辑正文后保存并点击“重新提交”。</td><td>创建 R2；进度从 0/2 开始，R1 的票不进入 R2。</td></tr>

@@ -24,7 +24,10 @@ import { api, errorMessage } from './api'
 import './App.css'
 import { AdminUserPanel } from './components/AdminUserPanel'
 import { ContentDetail } from './components/ContentDetail'
-import { ContentEditor } from './components/ContentEditor'
+import {
+  ContentEditor,
+  type ContentSaveIntent,
+} from './components/ContentEditor'
 import {
   OnboardingGuide,
   type GuideTarget,
@@ -282,7 +285,7 @@ function App() {
     void loadDetail(contentId)
   }
 
-  async function saveContent(input: ContentInput) {
+  async function saveContent(input: ContentInput, intent: ContentSaveIntent) {
     setBusy(true)
     setError('')
     try {
@@ -290,14 +293,38 @@ function App() {
       const saved = isEdit
         ? await api.edit(detail.content.id, input, detail.content.version)
         : await api.create(input)
+      let result = saved
+      if (intent === 'SUBMIT') {
+        try {
+          result = await api.submit(saved.content.id, saved.content.version)
+        } catch (submitError) {
+          setEditor(null)
+          setScope('ALL')
+          setQuery('')
+          setStatusFilter('ALL')
+          setRiskFilter('ALL')
+          await loadWorkspace({
+            preferredId: saved.content.id,
+            knownDetail: saved,
+            criteria: {
+              scope: 'ALL',
+              query: '',
+              status: 'ALL',
+              risk: 'ALL',
+            },
+          })
+          setError(`内容已保存，但提交审核失败：${errorMessage(submitError)}`)
+          return
+        }
+      }
       setEditor(null)
       setScope('ALL')
       setQuery('')
       setStatusFilter('ALL')
       setRiskFilter('ALL')
       await loadWorkspace({
-        preferredId: saved.content.id,
-        knownDetail: saved,
+        preferredId: result.content.id,
+        knownDetail: result,
         criteria: {
           scope: 'ALL',
           query: '',
@@ -305,7 +332,15 @@ function App() {
           risk: 'ALL',
         },
       })
-      showNotice(isEdit ? '内容变更已保存' : '草稿已创建')
+      showNotice(
+        intent === 'SUBMIT'
+          ? isEdit
+            ? '修改已保存并提交审核'
+            : '内容已创建并提交审核'
+          : isEdit
+            ? '内容变更已保存'
+            : '草稿已暂存',
+      )
     } catch (saveError) {
       setError(errorMessage(saveError))
       throw saveError

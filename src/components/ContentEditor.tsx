@@ -1,4 +1,4 @@
-import { FilePlus2, Save, X } from 'lucide-react'
+import { FilePlus2, Save, Send, X } from 'lucide-react'
 import { type FormEvent, useEffect, useRef, useState } from 'react'
 import { errorMessage } from '../api'
 import type { ContentInput } from '../types'
@@ -8,8 +8,10 @@ interface ContentEditorProps {
   initial?: ContentInput
   busy: boolean
   onClose: () => void
-  onSave: (input: ContentInput) => Promise<void>
+  onSave: (input: ContentInput, intent: ContentSaveIntent) => Promise<void>
 }
+
+export type ContentSaveIntent = 'DRAFT' | 'SUBMIT'
 
 export function ContentEditor({
   mode,
@@ -35,8 +37,12 @@ export function ContentEditor({
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     setError('')
+    const submitter = (event.nativeEvent as SubmitEvent)
+      .submitter as HTMLButtonElement | null
+    const intent: ContentSaveIntent =
+      submitter?.value === 'SUBMIT' ? 'SUBMIT' : 'DRAFT'
     try {
-      await onSave({ title, body, risk })
+      await onSave({ title, body, risk }, intent)
     } catch (saveError) {
       setError(errorMessage(saveError))
     }
@@ -61,8 +67,8 @@ export function ContentEditor({
               <h2 id="editor-title">{mode === 'create' ? '创建内容' : '编辑内容'}</h2>
               <span className="dialog-description">
                 {mode === 'create'
-                  ? '先保存为草稿，确认内容后再提交审核。'
-                  : '修改只影响当前工作副本，不会改写历史快照。'}
+                  ? '可以暂存后继续编辑，也可以直接提交进入审核。'
+                  : '修改不会改写历史快照；可保存或直接进入新审核轮次。'}
               </span>
             </div>
           </div>
@@ -142,13 +148,18 @@ export function ContentEditor({
           <button type="button" className="button secondary" disabled={busy} onClick={onClose}>
             取消
           </button>
+          <button type="submit" className="button secondary" value="DRAFT" disabled={busy}>
+            <Save aria-hidden="true" />
+            {busy ? '处理中…' : mode === 'create' ? '暂存草稿' : '保存修改'}
+          </button>
           <button
             type="submit"
             className="button primary"
-            disabled={busy || title.trim().length === 0 || body.trim().length === 0}
+            value="SUBMIT"
+            disabled={busy}
           >
-            <Save aria-hidden="true" />
-            {busy ? '保存中…' : '保存'}
+            <Send aria-hidden="true" />
+            {busy ? '处理中…' : mode === 'create' ? '直接提交审核' : '保存并提交审核'}
           </button>
         </footer>
       </form>

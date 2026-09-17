@@ -42,7 +42,7 @@ const guideSteps: Array<{
     icon: FilePlus2,
     operations: [
       '填写任意标题和正文，风险选择 HIGH，然后保存草稿。',
-      '确认详情状态仍为“草稿”，内容可以继续编辑。',
+      '点击“暂存草稿”，确认状态仍为“草稿”且可以继续编辑。',
     ],
     expected: '内容保持 DRAFT，尚未产生审核轮次和不可变快照。',
     target: {
@@ -57,11 +57,11 @@ const guideSteps: Array<{
   {
     actor: 'Alice',
     role: '提交人',
-    title: '提交审核',
+    title: '提交审核（分步或快捷）',
     icon: Send,
     operations: [
-      '保持刚创建的草稿；它默认位于最近更新列表首位。',
-      '在详情确认工作副本后点击“提交审核”。',
+      '完整验收路径：暂存后在详情点击“提交审核”。',
+      '日常快捷路径：在创建表单直接点击“直接提交审核”。',
     ],
     expected: '内容进入 IN_REVIEW，并创建 R1 不可变快照。',
     target: {
