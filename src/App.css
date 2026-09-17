@@ -4,8 +4,11 @@
 
 .app-shell {
   width: min(1480px, calc(100% - 32px));
+  height: calc(100vh - 32px);
   min-height: calc(100vh - 32px);
   margin: 16px auto;
+  display: flex;
+  flex-direction: column;
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -158,12 +161,17 @@
 }
 
 .workspace {
-  min-height: calc(100vh - 173px);
+  min-height: 0;
+  flex: 1;
   display: grid;
   grid-template-columns: minmax(280px, 360px) minmax(0, 1fr);
+  overflow: hidden;
 }
 
 .list-pane {
+  min-height: 0;
+  display: grid;
+  grid-template-rows: auto auto auto minmax(0, 1fr);
   border-right: 1px solid var(--line);
   background: var(--surface-muted);
 }
@@ -214,6 +222,128 @@
   font-weight: 700;
 }
 
+.item-count.filtered {
+  min-width: 43px;
+  color: var(--accent-dark);
+  background: var(--accent-soft);
+}
+
+.queue-metrics {
+  min-height: 58px;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  border-bottom: 1px solid var(--line);
+  background: var(--surface);
+}
+
+.queue-metrics > span {
+  min-width: 0;
+  padding: 9px 5px 8px;
+  display: grid;
+  place-items: center;
+  gap: 1px;
+  border-right: 1px solid var(--line);
+}
+
+.queue-metrics > span:last-child {
+  border-right: 0;
+}
+
+.queue-metrics strong {
+  color: var(--ink);
+  font-size: 16px;
+  line-height: 1.2;
+}
+
+.queue-metrics small {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.filter-toolbar {
+  padding: 10px 12px;
+  display: grid;
+  gap: 8px;
+  border-bottom: 1px solid var(--line);
+  background: #f3f5f2;
+}
+
+.search-field {
+  position: relative;
+  display: block;
+}
+
+.search-field > svg {
+  position: absolute;
+  left: 10px;
+  top: 50%;
+  width: 15px;
+  height: 15px;
+  color: var(--faint);
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+
+.search-field input {
+  height: 36px;
+  padding: 7px 10px 7px 32px;
+  background: var(--surface);
+  font-size: 12px;
+}
+
+.filter-options {
+  display: flex;
+  align-items: end;
+  gap: 7px;
+}
+
+.filter-select {
+  min-width: 0;
+  flex: 1;
+  display: grid;
+  gap: 3px;
+}
+
+.filter-select > span {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.filter-select select {
+  width: 100%;
+  height: 32px;
+  padding: 5px 24px 5px 8px;
+  color: var(--ink);
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  border-radius: 5px;
+  font-size: 11px;
+}
+
+.clear-filters {
+  width: 32px;
+  height: 32px;
+  flex: 0 0 32px;
+  background: var(--surface);
+  border-color: var(--line);
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
 .icon-button {
   width: 34px;
   height: 34px;
@@ -243,7 +373,11 @@
 }
 
 .content-list {
+  min-height: 0;
   display: grid;
+  align-content: start;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
 }
 
 .content-list-item {
@@ -288,7 +422,29 @@
 }
 
 .list-item-meta {
-  justify-content: flex-start;
+  justify-content: space-between;
+  min-width: 0;
+}
+
+.list-item-meta > span:first-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.list-item-date {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: 0 0 auto;
+  color: var(--faint);
+  font-size: 10px;
+}
+
+.list-item-date svg {
+  width: 12px;
+  height: 12px;
 }
 
 .risk-dot,
@@ -346,6 +502,8 @@
 
 .detail-pane {
   min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
   background: var(--surface);
 }
 
@@ -670,6 +828,14 @@ textarea:hover {
   text-align: center;
 }
 
+.compact-empty {
+  min-height: 190px;
+}
+
+.compact-empty .button {
+  margin-top: 8px;
+}
+
 .empty-state svg,
 .empty-detail svg {
   width: 32px;
@@ -813,6 +979,7 @@ textarea:hover {
 @media (max-width: 820px) {
   .app-shell {
     width: 100%;
+    height: auto;
     min-height: 100vh;
     margin: 0;
     border: 0;
@@ -835,10 +1002,13 @@ textarea:hover {
 
   .workspace {
     min-height: 0;
+    flex: none;
     grid-template-columns: 1fr;
+    overflow: visible;
   }
 
   .list-pane {
+    display: block;
     border-right: 0;
     border-bottom: 1px solid var(--line);
   }
@@ -850,6 +1020,10 @@ textarea:hover {
 
   .detail-panel {
     padding: 24px 20px 44px;
+  }
+
+  .detail-pane {
+    overflow: visible;
   }
 
   .detail-header {

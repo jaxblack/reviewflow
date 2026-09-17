@@ -12,14 +12,14 @@ describe('demo data seed', () => {
 
   afterEach(() => database.close())
 
-  it('creates all workflow scenarios exactly once', () => {
+  it('creates core scenarios and a realistic queue exactly once', () => {
     expect(seedDemoData(database, Date.UTC(2026, 8, 17, 12))).toEqual({
-      insertedContents: 9,
-      totalDemoContents: 9,
+      insertedContents: 48,
+      totalDemoContents: 48,
     })
     expect(seedDemoData(database, Date.UTC(2026, 8, 17, 13))).toEqual({
       insertedContents: 0,
-      totalDemoContents: 9,
+      totalDemoContents: 48,
     })
 
     const statuses = database.prepare(`
@@ -27,10 +27,19 @@ describe('demo data seed', () => {
       WHERE id LIKE 'demo-%' GROUP BY status ORDER BY status
     `).all()
     expect(statuses).toEqual([
-      { status: 'APPROVED', count: 4 },
-      { status: 'DRAFT', count: 1 },
-      { status: 'IN_REVIEW', count: 2 },
-      { status: 'REJECTED', count: 2 },
+      { status: 'APPROVED', count: 19 },
+      { status: 'DRAFT', count: 9 },
+      { status: 'IN_REVIEW', count: 11 },
+      { status: 'REJECTED', count: 9 },
+    ])
+
+    const risks = database.prepare(`
+      SELECT risk, count(*) AS count FROM contents
+      WHERE id LIKE 'demo-%' GROUP BY risk ORDER BY risk
+    `).all()
+    expect(risks).toEqual([
+      { risk: 'HIGH', count: 22 },
+      { risk: 'LOW', count: 26 },
     ])
 
     const rounds = database.prepare(`

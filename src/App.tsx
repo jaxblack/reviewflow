@@ -1,13 +1,16 @@
 import {
   ClipboardCheck,
+  Clock3,
   Files,
   FilePlus2,
   Inbox,
   LoaderCircle,
   RefreshCw,
+  Search,
   ShieldCheck,
+  X,
 } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useDeferredValue, useEffect, useState } from 'react'
 import { api, errorMessage } from './api'
 import './App.css'
 import { ContentDetail } from './components/ContentDetail'
@@ -15,8 +18,10 @@ import { ContentEditor } from './components/ContentEditor'
 import type {
   ContentDetail as ContentDetailData,
   ContentInput,
+  ContentStatus,
   ContentSummary,
   DecisionType,
+  Risk,
   User,
   ViewKey,
 } from './types'
@@ -34,6 +39,14 @@ const viewLabels: Record<ViewKey, string> = {
   all: '全部内容',
 }
 
+type StatusFilter = 'ALL' | ContentStatus
+type RiskFilter = 'ALL' | Risk
+
+const compactDateFormatter = new Intl.DateTimeFormat('zh-CN', {
+  month: '2-digit',
+  day: '2-digit',
+})
+
 function App() {
   const [users, setUsers] = useState<User[]>([])
   const [me, setMe] = useState<User | null>(null)
@@ -44,6 +57,10 @@ function App() {
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  const [query, setQuery] = useState('')
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('ALL')
+  const [riskFilter, setRiskFilter] = useState<RiskFilter>('ALL')
+  const deferredQuery = useDeferredValue(query)
 
   useEffect(() => {
     void initialize()
@@ -94,6 +111,7 @@ function App() {
     try {
       const currentUser = await api.switchUser(userId)
       const nextView = firstView(currentUser)
+      resetFilters()
       setMe(currentUser)
       setView(nextView)
       await loadWorkspace(nextView)
@@ -102,6 +120,12 @@ function App() {
     } finally {
       setBusy(false)
     }
+  }
+
+  function resetFilters() {
+    setQuery('')
+    setStatusFilter('ALL')
+    setRiskFilter('ALL')
   }
 
   async function openContent(contentId: string) {
@@ -168,6 +192,42 @@ function App() {
   }
 
   const views = me ? availableViews(me) : []
+  const normalizedQuery = deferredQuery.trim().toLocaleLowerCase('zh-CN')
+  const filteredItems = items.filter((item) => {
+    const matchesQuery =
+      normalizedQuery.length === 0 ||
+      item.title.toLocaleLowerCase('zh-CN').includes(normalizedQuery) ||
+      item.author.name.toLocaleLowerCase('zh-CN').includes(normalizedQuery)
+    const matchesStatus = statusFilter === 'ALL' || item.status === statusFilter
+    const matchesRisk = riskFilter === 'ALL' || item.risk === riskFilter
+    return matchesQuery && matchesStatus && matchesRisk
+  })
+  const hasFilters = query.trim().length > 0 || statusFilter !== 'ALL' || riskFilter !== 'ALL'
+  const statusCounts = {
+    DRAFT: items.filter((item) => item.status === 'DRAFT').length,
+    IN_REVIEW: items.filter((item) => item.status === 'IN_REVIEW').length,
+    APPROVED: items.filter((item) => item.status === 'APPROVED').length,
+    REJECTED: items.filter((item) => item.status === 'REJECTED').length,
+  }
+  const pendingMetrics = [
+    { label: '待处理', value: items.length },
+    { label: '高风险', value: items.filter((item) => item.risk === 'HIGH').length },
+    {
+      label: '待首票',
+      value: items.filter((item) => item.currentRound?.approvalCount === 0).length,
+    },
+    {
+      label: '已有票',
+      value: items.filter((item) => (item.currentRound?.approvalCount ?? 0) > 0).length,
+    },
+  ]
+  const contentMetrics = [
+    { label: '草稿', value: statusCounts.DRAFT },
+    { label: '审核中', value: statusCounts.IN_REVIEW },
+    { label: '已通过', value: statusCounts.APPROVED },
+    { label: '已拒绝', value: statusCounts.REJECTED },
+  ]
+  const metrics = view === 'pending' ? pendingMetrics : contentMetrics
 
   return (
     <div className="app-shell">
@@ -214,6 +274,7 @@ function App() {
             key={item}
             className={view === item ? 'active' : ''}
             onClick={() => {
+              resetFilters()
               setView(item)
               void loadWorkspace(item)
             }}
@@ -249,7 +310,14 @@ function App() {
               <h1>{viewLabels[view]}</h1>
             </div>
             <div className="list-tools">
-              <span className="item-count">{items.length}</span>
+              <span
+                className={`item-count ${filteredItems.length !== items.length ? 'filtered' : ''}`}
+                title="当前结果 / 全部内容"
+              >
+                {filteredItems.length === items.length
+                  ? items.length
+                  : `${filteredItems.length}/${items.length}`}
+              </span>
               <button
                 type="button"
                 className="icon-button"
@@ -274,6 +342,65 @@ function App() {
             </div>
           </header>
 
+          <div className="queue-metrics" aria-label="队列概览">
+            {metrics.map((metric) => (
+              <span key={metric.label}>
+                <strong>{metric.value}</strong>
+                <small>{metric.label}</small>
+              </span>
+            ))}
+          </div>
+
+          <div className="filter-toolbar">
+            <label className="search-field">
+              <span className="sr-only">搜索标题或作者</span>
+              <Search aria-hidden="true" />
+              <input
+                type="search"
+                value={query}
+                placeholder="搜索标题或作者"
+                onChange={(event) => setQuery(event.target.value)}
+              />
+            </label>
+            <div className="filter-options">
+              <label className="filter-select">
+                <span>状态</span>
+                <select
+                  value={statusFilter}
+                  onChange={(event) => setStatusFilter(event.target.value as StatusFilter)}
+                >
+                  <option value="ALL">全部状态</option>
+                  <option value="DRAFT">草稿</option>
+                  <option value="IN_REVIEW">审核中</option>
+                  <option value="APPROVED">已通过</option>
+                  <option value="REJECTED">已拒绝</option>
+                </select>
+              </label>
+              <label className="filter-select">
+                <span>风险</span>
+                <select
+                  value={riskFilter}
+                  onChange={(event) => setRiskFilter(event.target.value as RiskFilter)}
+                >
+                  <option value="ALL">全部风险</option>
+                  <option value="LOW">LOW</option>
+                  <option value="HIGH">HIGH</option>
+                </select>
+              </label>
+              {hasFilters && (
+                <button
+                  type="button"
+                  className="icon-button clear-filters"
+                  title="清除筛选"
+                  aria-label="清除筛选"
+                  onClick={resetFilters}
+                >
+                  <X aria-hidden="true" />
+                </button>
+              )}
+            </div>
+          </div>
+
           {loading && items.length === 0 ? (
             <div className="loading-state">
               <LoaderCircle aria-hidden="true" />
@@ -287,9 +414,18 @@ function App() {
                 {view === 'pending' ? '当前没有需要你处理的审核' : '列表还是空的'}
               </span>
             </div>
+          ) : filteredItems.length === 0 ? (
+            <div className="empty-state compact-empty">
+              <Search aria-hidden="true" />
+              <strong>没有匹配结果</strong>
+              <span>调整关键词、状态或风险条件</span>
+              <button type="button" className="button secondary" onClick={resetFilters}>
+                清除筛选
+              </button>
+            </div>
           ) : (
             <div className="content-list">
-              {items.map((item) => (
+              {filteredItems.map((item) => (
                 <button
                   type="button"
                   key={item.id}
@@ -306,13 +442,19 @@ function App() {
                   </span>
                   <strong>{item.title}</strong>
                   <span className="list-item-meta">
-                    {item.author.name}
-                    {item.currentRound && (
-                      <>
-                        {' '}· R{item.currentRound.roundNo} · {item.currentRound.approvalCount}/
-                        {item.currentRound.requiredApprovals}
-                      </>
-                    )}
+                    <span>
+                      {item.author.name}
+                      {item.currentRound && (
+                        <>
+                          {' '}· R{item.currentRound.roundNo} · {item.currentRound.approvalCount}/
+                          {item.currentRound.requiredApprovals}
+                        </>
+                      )}
+                    </span>
+                    <span className="list-item-date">
+                      <Clock3 aria-hidden="true" />
+                      {compactDateFormatter.format(new Date(item.updatedAt))}
+                    </span>
                   </span>
                 </button>
               ))}
