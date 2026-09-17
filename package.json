@@ -7,16 +7,18 @@
     "node": ">=22.5"
   },
   "scripts": {
-    "dev": "concurrently -k -n api,web -c green,cyan \"npm:dev:api\" \"npm:dev:web\"",
+    "dev": "npm run docs:build && concurrently -k -n api,web -c green,cyan \"npm:dev:api\" \"npm:dev:web\"",
     "dev:api": "NODE_ENV=development PORT=3001 tsx watch server/index.ts",
     "dev:web": "vite",
-    "build": "tsc -b && vite build && tsc -p tsconfig.server.json",
+    "docs:build": "node scripts/generate-docs.mjs",
+    "docs:check": "node scripts/generate-docs.mjs --check",
+    "build": "npm run docs:build && tsc -b && vite build && tsc -p tsconfig.server.json",
     "start": "node dist-server/server/index.js",
     "seed:demo": "node dist-server/server/seed-demo.js",
     "test": "vitest run",
     "test:watch": "vitest",
     "lint": "oxlint src server",
-    "check": "npm run lint && npm test && npm run build",
+    "check": "npm run lint && npm test && npm run docs:check && npm run build",
     "preview": "vite preview"
   },
   "dependencies": {

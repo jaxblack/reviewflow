@@ -404,8 +404,10 @@ reviewflow/
 │   ├── api.ts           # 前端 API 与幂等请求封装
 │   └── App.tsx          # 用户切换、统一队列、详情和管理中心编排
 ├── server/              # Fastify API、SQLite schema、事务和测试
-├── public/docs/         # 在线 HTML 设计、测试、验收与运行文档
+├── public/docs/         # 自动生成的在线 HTML 文档，不直接编辑
 ├── docs/                # 架构、设计、评审、测试、演示文档和 PC 截图
+│   └── site/            # HTML 页面模板、manifest 与样式源文件
+├── scripts/             # HTML 文档静态生成器
 ├── deploy/              # systemd、Caddy、Nginx 与腾讯云部署说明
 ├── compose.yaml
 └── Dockerfile
@@ -416,6 +418,7 @@ reviewflow/
 | 文档 | 定位 |
 | --- | --- |
 | [HTML 文档中心](https://qlili.com/reviewflow/docs/) | 在线浏览系统设计、测试报告、验收报告和部署运行说明 |
+| [HTML 生成与维护](docs/html-documentation.md) | 模板目录、manifest、生成命令、更新流程与故障排查 |
 | [当前实现架构](docs/architecture.md) | SQLite MVP 的状态机、数据模型、一致性和部署边界 |
 | [完整系统设计](docs/reviewflow-system-design.md) | PostgreSQL 目标模型、DDL、API、权限、事务与实施顺序 |
 | [技术评审方案](docs/reviewflow-technical-review.md) | 评审门禁、检查清单、风险分级、关键链路和结论模板 |

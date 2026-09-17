@@ -1,0 +1,31 @@
+{
+  "site": {
+    "name": "ReviewFlow",
+    "version": "0.1.0",
+    "updatedAt": "2026-09-17",
+    "repositoryUrl": "https://github.com/jaxblack/reviewflow",
+    "applicationUrl": "https://qlili.com/reviewflow/"
+  },
+  "pages": [
+    {
+      "file": "index.html",
+      "label": "文档中心"
+    },
+    {
+      "file": "design.html",
+      "label": "系统设计"
+    },
+    {
+      "file": "test-report.html",
+      "label": "测试报告"
+    },
+    {
+      "file": "acceptance-report.html",
+      "label": "验收报告"
+    },
+    {
+      "file": "operations.html",
+      "label": "部署运行"
+    }
+  ]
+}
