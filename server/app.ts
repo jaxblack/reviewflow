@@ -89,7 +89,15 @@ interface IdempotentResult<T> {
   replayed: boolean
 }
 
-interface SummaryRow extends ContentRow {
+interface SummaryRow {
+  id: string
+  author_id: string
+  title: string
+  risk: Risk
+  status: ContentStatus
+  version: number
+  created_at: string
+  updated_at: string
   author_name: string
   current_round_id: string | null
   current_round_no: number | null
@@ -799,14 +807,27 @@ function ensureRoleChangeAllowed(
             WHERE ur.role = 'REVIEWER'
               AND ur.user_id <> c.author_id
               AND ur.user_id <> ?
-          ) < rr.required_approvals
+              AND NOT EXISTS (
+                SELECT 1
+                FROM review_decisions decided
+                WHERE decided.round_id = rr.id
+                  AND decided.reviewer_id = ur.user_id
+              )
+          ) < (
+            rr.required_approvals - (
+              SELECT count(*)
+              FROM review_decisions approved
+              WHERE approved.round_id = rr.id
+                AND approved.decision = 'APPROVE'
+            )
+          )
         LIMIT 1
       `)
       .get(target.id, target.id)
     if (blockedRound) {
       throw new ApiError(
         409,
-        'ROLE_CHANGE_BLOCKED',
+        'ROLE_CHANGE_WOULD_BLOCK_OPEN_ROUND',
         '该角色仍是进行中审核所需的合法审核人',
       )
     }
@@ -865,10 +886,30 @@ function listContentSummaries(
   database: DatabaseSync,
   where = '',
   params: string[] = [],
+  snapshotViewerId?: string,
 ): ContentSummaryDto[] {
+  const protectSnapshot = snapshotViewerId !== undefined ? 1 : 0
+  const viewerId = snapshotViewerId ?? ''
   const rows = database
     .prepare(`
-      SELECT c.*, u.display_name AS author_name,
+      SELECT
+        c.id,
+        c.author_id,
+        CASE
+          WHEN ? = 1 AND c.author_id <> ? AND c.status <> 'IN_REVIEW'
+          THEN coalesce(latest_revision.title, c.title)
+          ELSE c.title
+        END AS title,
+        CASE
+          WHEN ? = 1 AND c.author_id <> ? AND c.status <> 'IN_REVIEW'
+          THEN coalesce(latest_revision.risk, c.risk)
+          ELSE c.risk
+        END AS risk,
+        c.status,
+        c.version,
+        c.created_at,
+        c.updated_at,
+        u.display_name AS author_name,
         rr.id AS current_round_id,
         rr.round_no AS current_round_no,
         rr.status AS round_status,
@@ -888,10 +929,17 @@ function listContentSummaries(
         WHERE latest.content_id = c.id
         ORDER BY latest.round_no DESC LIMIT 1
       )
+      LEFT JOIN content_revisions latest_revision ON latest_revision.id = rr.revision_id
       ${where}
       ORDER BY c.updated_at DESC, c.id
     `)
-    .all(...params) as unknown as SummaryRow[]
+    .all(
+      protectSnapshot,
+      viewerId,
+      protectSnapshot,
+      viewerId,
+      ...params,
+    ) as unknown as SummaryRow[]
   return rows.map(toSummary)
 }
 
@@ -915,6 +963,7 @@ function listPendingContentSummaries(
 function listReviewedContentSummaries(
   database: DatabaseSync,
   reviewerId: string,
+  protectUnsubmittedChanges = true,
 ): ContentSummaryDto[] {
   return listContentSummaries(
     database,
@@ -926,6 +975,7 @@ function listReviewedContentSummaries(
         AND mine.reviewer_id = ?
     )`,
     [reviewerId],
+    protectUnsubmittedChanges ? reviewerId : undefined,
   )
 }
 
@@ -951,7 +1001,14 @@ function buildWorkspace(
   )
   if (user.roles.includes('REVIEWER')) {
     addItems('PENDING_REVIEW', listPendingContentSummaries(database, user.id))
-    addItems('REVIEWED', listReviewedContentSummaries(database, user.id))
+    addItems(
+      'REVIEWED',
+      listReviewedContentSummaries(
+        database,
+        user.id,
+        !user.roles.includes('ADMIN'),
+      ),
+    )
   }
   if (user.roles.includes('ADMIN')) {
     addItems('ADMIN', listContentSummaries(database))

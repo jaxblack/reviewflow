@@ -10,7 +10,7 @@
 | 文档类型 | 业务建模与技术设计 |
 | 推荐技术栈 | TypeScript、React、Fastify、PostgreSQL、Kysely、Zod |
 | 核心目标 | 正确实现多角色、分级审核、多轮审核、不可变历史、幂等和并发一致性 |
-| 不在范围内 | 真实登录、角色管理后台、通知、审核 SLA、内容删除、撤回和申诉 |
+| 不在范围内 | 真实登录、用户删除、通知、审核 SLA、内容删除、撤回和申诉 |
 
 本文优先保证业务规则和数据一致性。系统采用模块化单体和单个关系型数据库，不引入微服务、消息队列或事件溯源，避免在当前规模下制造不必要的分布式事务。
 
@@ -531,7 +531,9 @@ CREATE INDEX idempotency_requests_cleanup
 
 ### 6.6 角色变化策略
 
-当前预置用户和角色在运行期不可变。如果未来加入角色管理，删除 `REVIEWER` 前必须在同一事务中检查每个 OPEN 轮次：
+当前实现提供受限的运行期用户与角色管理：ADMIN 可以创建用户、修改显示名并叠加 `SUBMITTER`、`REVIEWER`、`ADMIN`，但不提供用户删除。删除会破坏内容作者和审核决定的审计引用。
+
+系统必须阻止移除最后一位 ADMIN。删除 `REVIEWER` 前还必须在同一事务中检查每个 OPEN 轮次：
 
 ```text
 remainingApprovals = requiredApprovals - currentApprovalCount
@@ -544,7 +546,7 @@ remainingEligibleReviewers =
 只有 remainingEligibleReviewers >= remainingApprovals 时才允许撤销角色。
 ```
 
-已有合法决定继续计票。若检查失败，返回 `409 ROLE_CHANGE_WOULD_BLOCK_OPEN_ROUND`，管理员必须先增加其他 REVIEWER 或等待当前轮次结束。
+已有合法决定继续计票，已决定用户不再属于“剩余审核人”。若检查失败，返回 `409 ROLE_CHANGE_WOULD_BLOCK_OPEN_ROUND`，管理员必须先增加其他 REVIEWER 或等待当前轮次结束。用户改名不回写 `content_revisions.author_name_snapshot` 或 `review_decisions.reviewer_name_snapshot`。
 
 ### 6.7 预置数据
 
@@ -836,6 +838,7 @@ sequenceDiagram
 | 方法 | 路径 | 权限 | 用途 |
 | --- | --- | --- | --- |
 | GET | `/api/me` | 已建立会话 | 返回服务端当前用户和角色 |
+| GET | `/api/workspace` | 已建立会话 | 返回当前用户相关的去重全景队列及队列归属 |
 | GET | `/api/contents?scope=mine` | SUBMITTER | 我的内容 |
 | POST | `/api/contents` | SUBMITTER | 创建草稿 |
 | GET | `/api/contents/:id` | 按可见性规则 | 内容详情、当前进度 |
@@ -845,6 +848,9 @@ sequenceDiagram
 | POST | `/api/review-rounds/:id/decisions` | REVIEWER 且非作者 | 通过或拒绝 |
 | GET | `/api/contents/:id/history` | 按可见性规则 | 完整审核历史 |
 | GET | `/api/admin/contents` | ADMIN | 查看所有内容 |
+| GET | `/api/admin/users` | ADMIN | 查看用户、角色及关联业务统计 |
+| POST | `/api/admin/users` | ADMIN | 创建用户并分配一个或多个角色 |
+| PATCH | `/api/admin/users/:id` | ADMIN | 修改显示名和角色集合 |
 
 所有列表 API 都需要分页，推荐游标分页；排序使用 `(updated_at, id)` 或 `(started_at, id)` 保证稳定。
 
@@ -927,6 +933,8 @@ sequenceDiagram
 
 ## 10. 查询与页面
 
+PC 工作台采用单页主从布局：左侧同时展开当前身份可见的“我发起”“待我审核”“我已参与”和“全部请求”语义队列，同一内容按 ID 去重后携带一个或多个队列标记；右侧持续展示选中请求的工作副本、生命周期、最新轮次和不可变历史。角色切换时必须先清空旧身份的列表和详情，再加载新工作区，避免短暂泄漏。
+
 ### 10.1 我的内容
 
 展示当前用户创建的全部内容：
@@ -982,6 +990,8 @@ ORDER BY rr.started_at, rr.id;
 ### 10.5 管理员页面
 
 Diana 可以查看所有状态的内容和全部轮次历史。管理员页面不显示审核操作，除非当前用户还明确拥有 `REVIEWER`，且满足非作者等全部审核条件。
+
+PC 页面右上角向 ADMIN 暴露“用户与角色”入口。管理中心支持创建用户、改名和多角色分配，展示每位用户的内容数和审核决定数；服务端负责最后管理员保护、开放轮次可完成性校验、名称唯一性和幂等，不依赖前端禁用控件。
 
 ---
 
@@ -1122,8 +1132,9 @@ AI Coding 工具应受规格和自动化验证约束，而不是一次性生成�
 ### 阶段四：历史和管理员
 
 - 多轮快照历史。
-- 管理员全部内容视图。
-- 可见性和角色组合测试。
+- 单页统一工作区和管理员全部内容视图。
+- 用户创建、改名、多角色分配及角色撤销保护。
+- 可见性、角色组合和历史姓名快照测试。
 
 ### 阶段五：端到端验证
 
@@ -1146,4 +1157,6 @@ AI Coding 工具应受规格和自动化验证约束，而不是一次性生成�
 - 重试和重复点击不会生成重复轮次或审核决定。
 - 并发终审和拒绝只产生一个最终结果。
 - 内容状态、轮次、决定和幂等结果原子提交。
+- PC 单页可同时查看当前身份的全部语义队列和选中请求的完整流转。
+- ADMIN 可以从站内管理用户与叠加角色，且不能移除最后管理员或让 OPEN 轮次失去足够审核人。
 - 上述规则均有可重复执行的自动化测试，而不只是依靠页面演示。

@@ -199,9 +199,31 @@ function App() {
   }
 
   function resetFilters() {
-    setQuery('')
-    setStatusFilter('ALL')
-    setRiskFilter('ALL')
+    applyFilters('', 'ALL', 'ALL')
+  }
+
+  function applyFilters(
+    nextQuery: string,
+    nextStatus: StatusFilter,
+    nextRisk: RiskFilter,
+  ) {
+    setQuery(nextQuery)
+    setStatusFilter(nextStatus)
+    setRiskFilter(nextRisk)
+
+    const matchingItems = items.filter((item) =>
+      matchesContentFilters(item, nextQuery, nextStatus, nextRisk),
+    )
+    if (matchingItems.length === 0) {
+      detailRequest.current += 1
+      setSelectedId(null)
+      setDetail(null)
+      return
+    }
+    if (!selectedId || !matchingItems.some((item) => item.id === selectedId)) {
+      const nextId = defaultSelection(matchingItems)
+      if (nextId) openContent(nextId)
+    }
   }
 
   function openContent(contentId: string) {
@@ -329,16 +351,9 @@ function App() {
     void initialize()
   }, [])
 
-  const normalizedQuery = deferredQuery.trim().toLocaleLowerCase('zh-CN')
-  const filteredItems = items.filter((item) => {
-    const matchesQuery =
-      normalizedQuery.length === 0 ||
-      item.title.toLocaleLowerCase('zh-CN').includes(normalizedQuery) ||
-      item.author.name.toLocaleLowerCase('zh-CN').includes(normalizedQuery)
-    const matchesStatus = statusFilter === 'ALL' || item.status === statusFilter
-    const matchesRisk = riskFilter === 'ALL' || item.risk === riskFilter
-    return matchesQuery && matchesStatus && matchesRisk
-  })
+  const filteredItems = items.filter((item) =>
+    matchesContentFilters(item, deferredQuery, statusFilter, riskFilter),
+  )
   const visibleQueues = queueDefinitions.filter(({ key }) => {
     if (key === 'MINE') return me?.roles.includes('SUBMITTER')
     if (key === 'ADMIN') return me?.roles.includes('ADMIN')
@@ -691,6 +706,22 @@ function defaultSelection(items: WorkspaceItem[]): string | undefined {
     items.find((item) => item.queues.includes('MINE')) ??
     items[0]
   )?.id
+}
+
+function matchesContentFilters(
+  item: WorkspaceItem,
+  query: string,
+  status: StatusFilter,
+  risk: RiskFilter,
+): boolean {
+  const normalizedQuery = query.trim().toLocaleLowerCase('zh-CN')
+  const matchesQuery =
+    normalizedQuery.length === 0 ||
+    item.title.toLocaleLowerCase('zh-CN').includes(normalizedQuery) ||
+    item.author.name.toLocaleLowerCase('zh-CN').includes(normalizedQuery)
+  const matchesStatus = status === 'ALL' || item.status === status
+  const matchesRisk = risk === 'ALL' || item.risk === risk
+  return matchesQuery && matchesStatus && matchesRisk
 }
 
 export default App

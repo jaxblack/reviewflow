@@ -2,13 +2,15 @@
 
 ## 技术方案
 
-ReviewFlow MVP 使用模块化单体：React SPA、Fastify API 和 Node.js 内置 SQLite。单个 Node 进程同时提供 API 与生产静态资源，适合单机演示和快速部署。
+ReviewFlow MVP 使用模块化单体：React SPA、Fastify API 和 Node.js 内置 SQLite。单个 Node 进程同时提供 API 与生产静态资源，适合单机演示和快速部署。PC Web 由单页全景审核工作台和 ADMIN 用户角色管理弹窗组成。
 
 ```mermaid
 flowchart LR
     Browser[React Web] -->|Cookie + JSON| API[Fastify API]
     API --> Auth[服务端会话身份]
     API --> Policy[权限与状态机]
+    API --> Workspace[统一工作区读模型]
+    API --> Admin[用户与角色策略]
     API --> DB[(SQLite WAL)]
 ```
 
@@ -31,6 +33,7 @@ stateDiagram-v2
 - LOW 需要一位审核人通过，HIGH 需要两位不同审核人通过。
 - 作者不能审核自己的内容。
 - ADMIN 可以查看全部内容，但不会自动获得审核权限。
+- ADMIN 可以创建用户、改名并分配叠加角色；不提供用户删除。
 
 ## 数据模型
 
@@ -66,6 +69,21 @@ SQLite 使用 WAL 和 `BEGIN IMMEDIATE` 串行化写事务。审核决定、轮�
 - 相同键和相同请求返回第一次响应。
 - 相同键对应不同请求时返回冲突。
 - 数据库唯一约束阻止使用新键重复写入同一审核决定。
+
+用户管理写请求采用相同的服务端身份和幂等事务边界。系统始终保留至少一位 ADMIN；撤销 REVIEWER 时，根据每个 OPEN 轮次的剩余通过票数和尚未决定的合法审核人做事务内校验，已有合法决定继续计票。
+
+## PC 工作台
+
+`GET /api/workspace` 按当前服务端身份合并并去重以下语义队列：
+
+- `MINE`：我发起的请求。
+- `PENDING_REVIEW`：当前轮次等待我决定。
+- `REVIEWED`：我在任一轮参与过的请求。
+- `ADMIN`：管理员可见的全部请求。
+
+左侧同时展开当前角色拥有的所有队列，右侧展示工作副本、请求生命周期、最新轮次进度和逐轮不可变审计历史。用户切换时先清空旧列表和详情，再重新获取工作区，避免旧身份内容短暂残留。
+
+ADMIN 可从 PC 页面右上角进入用户与角色管理。显示名更新只影响当前用户资料，提交快照和审核决定中的姓名快照不会被回写。
 
 ## 部署
 

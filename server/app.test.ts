@@ -11,6 +11,7 @@ interface DetailResponse {
     title: string
     status: string
     version: number
+    author?: { name: string }
   }
   history: Array<{
     id: string
@@ -18,8 +19,18 @@ interface DetailResponse {
     status: string
     approvalCount: number
     requiredApprovals: number
-    snapshot: { title: string }
-    decisions: Array<{ decision: string }>
+    snapshot: { title: string; authorName?: string }
+    decisions: Array<{ decision: string; reviewer?: { name: string } }>
+  }>
+}
+
+interface WorkspaceResponse {
+  items: Array<{
+    id: string
+    title: string
+    risk: string
+    roundCount: number
+    queues: Array<'MINE' | 'PENDING_REVIEW' | 'REVIEWED' | 'ADMIN'>
   }>
 }
 
@@ -185,6 +196,359 @@ describe('ReviewFlow core API', () => {
     expect(detail.history[0].status).toBe(detail.content.status)
   })
 
+  it('returns one identity-scoped workspace with deduplicated flow queues', async () => {
+    database
+      .prepare(`
+        INSERT INTO user_roles (user_id, role) VALUES (?, 'SUBMITTER')
+      `)
+      .run(USER_IDS.bob)
+    const alice = await sessionCookie(USER_IDS.alice)
+    const bob = await sessionCookie(USER_IDS.bob)
+    const mine = await createContent(alice, 'Alice draft', 'Body', 'LOW')
+    const bobDraft = await createContent(bob, 'Bob request', 'Body', 'LOW')
+    const bobSubmitted = await submitContent(
+      bob,
+      bobDraft.content.id,
+      bobDraft.content.version,
+    )
+
+    const before = await getWorkspace(alice)
+    expect(before.items.find((item) => item.id === mine.content.id)).toMatchObject({
+      roundCount: 0,
+      queues: ['MINE'],
+    })
+    expect(before.items.find((item) => item.id === bobDraft.content.id)).toMatchObject({
+      roundCount: 1,
+      queues: ['PENDING_REVIEW'],
+    })
+    expect(new Set(before.items.map((item) => item.id)).size).toBe(before.items.length)
+
+    await decide(alice, bobSubmitted.history[0].id, 'APPROVE', 'Reviewed')
+    const after = await getWorkspace(alice)
+    const reviewed = after.items.find((item) => item.id === bobDraft.content.id)
+    expect(reviewed?.queues).toContain('REVIEWED')
+    expect(reviewed?.queues).not.toContain('PENDING_REVIEW')
+
+    const diana = await sessionCookie(USER_IDS.diana)
+    const adminWorkspace = await getWorkspace(diana)
+    expect(adminWorkspace.items).toHaveLength(2)
+    expect(adminWorkspace.items.every((item) => item.queues.includes('ADMIN'))).toBe(true)
+  })
+
+  it('does not expose rejected working-copy changes in a reviewer workspace', async () => {
+    const alice = await sessionCookie(USER_IDS.alice)
+    const bob = await sessionCookie(USER_IDS.bob)
+    const diana = await sessionCookie(USER_IDS.diana)
+    const draft = await createContent(alice, 'Submitted title', 'Submitted body', 'LOW')
+    const submitted = await submitContent(alice, draft.content.id, draft.content.version)
+    await decide(bob, submitted.history[0].id, 'REJECT', 'Please revise')
+    const rejected = await getDetail(alice, draft.content.id)
+    const editedResponse = await app.inject({
+      method: 'PATCH',
+      url: `/api/contents/${draft.content.id}`,
+      headers: headers(alice),
+      payload: {
+        title: 'Private working title',
+        body: 'Private working body',
+        risk: 'HIGH',
+        expectedVersion: rejected.content.version,
+      },
+    })
+    expect(editedResponse.statusCode).toBe(200)
+
+    const reviewerItem = (await getWorkspace(bob)).items.find(
+      (item) => item.id === draft.content.id,
+    )
+    expect(reviewerItem).toMatchObject({
+      title: 'Submitted title',
+      risk: 'LOW',
+      queues: ['REVIEWED'],
+    })
+
+    const adminItem = (await getWorkspace(diana)).items.find(
+      (item) => item.id === draft.content.id,
+    )
+    expect(adminItem).toMatchObject({
+      title: 'Private working title',
+      risk: 'HIGH',
+      queues: ['ADMIN'],
+    })
+  })
+
+  it('allows only admins to create users and manage additive roles', async () => {
+    const alice = await sessionCookie(USER_IDS.alice)
+    const diana = await sessionCookie(USER_IDS.diana)
+
+    const forbidden = await app.inject({
+      method: 'GET',
+      url: '/api/admin/users',
+      headers: { cookie: alice },
+    })
+    expect(forbidden.statusCode).toBe(403)
+
+    const created = await app.inject({
+      method: 'POST',
+      url: '/api/admin/users',
+      headers: headers(diana),
+      payload: { name: 'Eva', roles: ['SUBMITTER'] },
+    })
+    expect(created.statusCode).toBe(201)
+    expect(created.json()).toMatchObject({
+      name: 'Eva',
+      roles: ['SUBMITTER'],
+      contentCount: 0,
+      decisionCount: 0,
+    })
+    const evaId = created.json().id as string
+
+    const duplicateName = await app.inject({
+      method: 'POST',
+      url: '/api/admin/users',
+      headers: headers(diana),
+      payload: { name: 'eva', roles: ['REVIEWER'] },
+    })
+    expect(duplicateName.statusCode).toBe(409)
+    expect(duplicateName.json().error.code).toBe('USER_NAME_EXISTS')
+
+    const removeLastAdmin = await app.inject({
+      method: 'PATCH',
+      url: `/api/admin/users/${USER_IDS.diana}`,
+      headers: headers(diana),
+      payload: { name: 'Diana', roles: ['REVIEWER'] },
+    })
+    expect(removeLastAdmin.statusCode).toBe(409)
+    expect(removeLastAdmin.json().error.code).toBe('LAST_ADMIN_REQUIRED')
+
+    const promoteEva = await app.inject({
+      method: 'PATCH',
+      url: `/api/admin/users/${evaId}`,
+      headers: headers(diana),
+      payload: { name: 'Eva Admin', roles: ['SUBMITTER', 'ADMIN'] },
+    })
+    expect(promoteEva.statusCode).toBe(200)
+    expect(promoteEva.json().roles).toEqual(['ADMIN', 'SUBMITTER'])
+
+    const demoteSelf = await app.inject({
+      method: 'PATCH',
+      url: `/api/admin/users/${USER_IDS.diana}`,
+      headers: headers(diana),
+      payload: { name: 'Diana', roles: ['REVIEWER'] },
+    })
+    expect(demoteSelf.statusCode).toBe(200)
+
+    const noLongerAdmin = await app.inject({
+      method: 'GET',
+      url: '/api/admin/users',
+      headers: { cookie: diana },
+    })
+    expect(noLongerAdmin.statusCode).toBe(403)
+
+    const eva = await sessionCookie(evaId)
+    const managedUsers = await app.inject({
+      method: 'GET',
+      url: '/api/admin/users',
+      headers: { cookie: eva },
+    })
+    expect(managedUsers.statusCode).toBe(200)
+    expect(managedUsers.json()).toHaveLength(5)
+  })
+
+  it('does not allow role changes to strand an open review round', async () => {
+    const alice = await sessionCookie(USER_IDS.alice)
+    const bob = await sessionCookie(USER_IDS.bob)
+    const chen = await sessionCookie(USER_IDS.chen)
+    const diana = await sessionCookie(USER_IDS.diana)
+    const draft = await createContent(alice, 'Role safety', 'Body', 'HIGH')
+    const submitted = await submitContent(alice, draft.content.id, draft.content.version)
+
+    const blocked = await app.inject({
+      method: 'PATCH',
+      url: `/api/admin/users/${USER_IDS.bob}`,
+      headers: headers(diana),
+      payload: { name: 'Bob', roles: ['ADMIN'] },
+    })
+    expect(blocked.statusCode).toBe(409)
+    expect(blocked.json().error.code).toBe(
+      'ROLE_CHANGE_WOULD_BLOCK_OPEN_ROUND',
+    )
+
+    await decide(bob, submitted.history[0].id, 'APPROVE')
+    const afterExistingDecision = await app.inject({
+      method: 'PATCH',
+      url: `/api/admin/users/${USER_IDS.bob}`,
+      headers: headers(diana),
+      payload: { name: 'Bob', roles: ['ADMIN'] },
+    })
+    expect(afterExistingDecision.statusCode).toBe(200)
+    expect(afterExistingDecision.json().roles).toEqual(['ADMIN'])
+
+    const completed = await decide(chen, submitted.history[0].id, 'APPROVE')
+    expect((completed.json() as DetailResponse).content.status).toBe('APPROVED')
+  })
+
+  it('preserves historical names when an admin renames users', async () => {
+    const alice = await sessionCookie(USER_IDS.alice)
+    const bob = await sessionCookie(USER_IDS.bob)
+    const diana = await sessionCookie(USER_IDS.diana)
+    const draft = await createContent(alice, 'Name snapshot', 'Body', 'LOW')
+    const submitted = await submitContent(alice, draft.content.id, draft.content.version)
+    await decide(bob, submitted.history[0].id, 'APPROVE')
+
+    const renameAlice = await app.inject({
+      method: 'PATCH',
+      url: `/api/admin/users/${USER_IDS.alice}`,
+      headers: headers(diana),
+      payload: {
+        name: 'Alice Renamed',
+        roles: ['SUBMITTER', 'REVIEWER'],
+      },
+    })
+    expect(renameAlice.statusCode).toBe(200)
+    const renameBob = await app.inject({
+      method: 'PATCH',
+      url: `/api/admin/users/${USER_IDS.bob}`,
+      headers: headers(diana),
+      payload: { name: 'Bob Renamed', roles: ['REVIEWER'] },
+    })
+    expect(renameBob.statusCode).toBe(200)
+
+    const detail = await getDetail(diana, draft.content.id)
+    expect(detail.content.author?.name).toBe('Alice Renamed')
+    expect(detail.history[0].snapshot.authorName).toBe('Alice')
+    expect(detail.history[0].decisions[0].reviewer?.name).toBe('Bob')
+  })
+
+  it('rejects client-supplied identity and workflow fields on write contracts', async () => {
+    const alice = await sessionCookie(USER_IDS.alice)
+    const bob = await sessionCookie(USER_IDS.bob)
+    const invalidCreate = await app.inject({
+      method: 'POST',
+      url: '/api/contents',
+      headers: headers(alice),
+      payload: {
+        title: 'Forged',
+        body: 'Body',
+        risk: 'LOW',
+        authorId: USER_IDS.bob,
+      },
+    })
+    expect(invalidCreate.statusCode).toBe(400)
+    expect(invalidCreate.json().error.code).toBe('INVALID_REQUEST')
+
+    const draft = await createContent(alice, 'Strict contract', 'Body', 'LOW')
+    const invalidEdit = await app.inject({
+      method: 'PATCH',
+      url: `/api/contents/${draft.content.id}`,
+      headers: headers(alice),
+      payload: {
+        title: 'Changed',
+        body: 'Body',
+        risk: 'LOW',
+        status: 'APPROVED',
+        expectedVersion: draft.content.version,
+      },
+    })
+    expect(invalidEdit.statusCode).toBe(400)
+
+    const invalidSubmit = await app.inject({
+      method: 'POST',
+      url: `/api/contents/${draft.content.id}/submit`,
+      headers: headers(alice),
+      payload: { expectedVersion: draft.content.version, requiredApprovals: 1 },
+    })
+    expect(invalidSubmit.statusCode).toBe(400)
+
+    const submitted = await submitContent(alice, draft.content.id, draft.content.version)
+    const invalidDecision = await app.inject({
+      method: 'POST',
+      url: `/api/review-rounds/${submitted.history[0].id}/decisions`,
+      headers: headers(bob),
+      payload: {
+        decision: 'APPROVE',
+        reviewerId: USER_IDS.alice,
+      },
+    })
+    expect(invalidDecision.statusCode).toBe(400)
+    expect((await getDetail(alice, draft.content.id)).history[0].decisions).toHaveLength(0)
+  })
+
+  it('rejects a stale tab even after the content returns to an editable state', async () => {
+    const alice = await sessionCookie(USER_IDS.alice)
+    const bob = await sessionCookie(USER_IDS.bob)
+    const draft = await createContent(alice, 'Old tab', 'Original', 'LOW')
+    const staleVersion = draft.content.version
+    const submitted = await submitContent(alice, draft.content.id, staleVersion)
+    await decide(bob, submitted.history[0].id, 'REJECT', 'Revise it')
+
+    const staleEdit = await app.inject({
+      method: 'PATCH',
+      url: `/api/contents/${draft.content.id}`,
+      headers: headers(alice),
+      payload: {
+        title: 'Overwritten from stale tab',
+        body: 'Stale',
+        risk: 'LOW',
+        expectedVersion: staleVersion,
+      },
+    })
+    expect(staleEdit.statusCode).toBe(409)
+    expect(staleEdit.json().error.code).toBe('STALE_VERSION')
+    const current = await getDetail(alice, draft.content.id)
+    expect(current.content.title).toBe('Old tab')
+    expect(current.content.status).toBe('REJECTED')
+  })
+
+  it('rolls back snapshot, round and idempotency when submission fails mid-transaction', async () => {
+    const alice = await sessionCookie(USER_IDS.alice)
+    const draft = await createContent(alice, 'Atomic submit', 'Body', 'LOW')
+    database.exec(`
+      CREATE TRIGGER inject_submission_failure
+      BEFORE UPDATE OF status ON contents
+      WHEN NEW.status = 'IN_REVIEW'
+      BEGIN
+        SELECT RAISE(ABORT, 'injected submission failure');
+      END;
+    `)
+    const key = randomUUID()
+    const request = {
+      method: 'POST' as const,
+      url: `/api/contents/${draft.content.id}/submit`,
+      headers: headers(alice, key),
+      payload: { expectedVersion: draft.content.version },
+    }
+
+    const failed = await app.inject(request)
+    expect(failed.statusCode).toBe(500)
+    const facts = database
+      .prepare(`
+        SELECT
+          (SELECT count(*) FROM content_revisions) AS revisions,
+          (SELECT count(*) FROM review_rounds) AS rounds,
+          (
+            SELECT count(*) FROM idempotency_requests
+            WHERE operation LIKE 'SUBMIT_CONTENT:%'
+          ) AS idempotency,
+          (SELECT status FROM contents WHERE id = ?) AS status
+      `)
+      .get(draft.content.id) as unknown as {
+        revisions: number
+        rounds: number
+        idempotency: number
+        status: string
+      }
+    expect(facts).toEqual({
+      revisions: 0,
+      rounds: 0,
+      idempotency: 0,
+      status: 'DRAFT',
+    })
+
+    database.exec('DROP TRIGGER inject_submission_failure')
+    const retry = await app.inject(request)
+    expect(retry.statusCode).toBe(201)
+    expect(retry.headers['idempotency-replayed']).toBe('false')
+  })
+
   async function sessionCookie(userId: string): Promise<string> {
     const response = await app.inject({
       method: 'POST',
@@ -254,5 +618,15 @@ describe('ReviewFlow core API', () => {
     })
     expect(response.statusCode).toBe(200)
     return response.json() as DetailResponse
+  }
+
+  async function getWorkspace(cookie: string): Promise<WorkspaceResponse> {
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/workspace',
+      headers: { cookie },
+    })
+    expect(response.statusCode).toBe(200)
+    return response.json() as WorkspaceResponse
   }
 })

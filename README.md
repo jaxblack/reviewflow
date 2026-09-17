@@ -4,9 +4,9 @@ ReviewFlow 是一个内部内容审核系统，重点不是页面数量，而是
 
 [在线演示](https://qlili.com/reviewflow/) · [HTML 文档中心](https://qlili.com/reviewflow/docs/) · [系统设计](docs/reviewflow-system-design.md) · [测试方案](docs/reviewflow-test-plan.md)
 
-> 在线环境是公开 Demo。任何访问者都可以切换预置用户并修改演示数据，请勿录入真实或敏感内容。
+> 在线环境是公开 Demo。任何访问者都可以切换用户；切换到 Diana 后还可管理演示用户和角色。请勿录入真实或敏感内容。
 
-![ReviewFlow 内容详情、审核进度和历史的移动端界面](artifacts/final-mobile.png)
+![ReviewFlow PC 单页工作台：统一队列、请求流转与审核进度](docs/assets/reviewflow-pc-workbench.png)
 
 ## 项目重点
 
@@ -25,6 +25,8 @@ ReviewFlow 不是在 `contents` 表上追加一个审核状态的普通 CRUD。�
 | --- | --- |
 | 多角色 | 用户可同时拥有多个角色；`ADMIN` 不自动获得 `REVIEWER` 权限 |
 | 服务端身份 | 写接口只信任服务端签名 Cookie，不接受客户端指定 actor 或 reviewer |
+| 统一工作台 | 一页同时展示我发起、待我审核、我已参与和管理员全量队列，详情串起完整生命周期 |
+| 用户与角色 | ADMIN 可在站内创建用户、改名和叠加角色；保护最后一位管理员及开放轮次审核能力 |
 | 内容编辑 | 只有作者且拥有 `SUBMITTER` 时可编辑；仅 `DRAFT`、`REJECTED` 可编辑 |
 | 分级审核 | LOW 需要 1 位审核人通过；HIGH 需要 2 位不同审核人通过 |
 | 自审限制 | 作者不能审核自己的内容，即使同时拥有 `REVIEWER` |
@@ -41,9 +43,9 @@ ReviewFlow 不是在 `contents` 表上追加一个审核状态的普通 CRUD。�
 | Alice | `SUBMITTER`、`REVIEWER` | 创建和提交自己的内容，也可审核他人内容，但不能自审 |
 | Bob | `REVIEWER` | 审核非本人创建的待审内容 |
 | Chen | `REVIEWER` | 审核非本人创建的待审内容 |
-| Diana | `ADMIN` | 查看所有内容和完整历史，但不能审核 |
+| Diana | `ADMIN` | 查看所有内容和完整历史、管理用户与角色，但不能仅凭 ADMIN 审核 |
 
-用户切换由服务端 `getCurrentUser()` 适配层提供，不是真实登录系统。切换后服务端写入签名、`HttpOnly`、`SameSite=Lax` Cookie，后续接口从 Cookie 恢复当前用户；未选择用户时默认为 Alice。
+用户切换由服务端 `getCurrentUser()` 适配层提供，不是真实登录系统。切换后服务端写入签名、`HttpOnly`、`SameSite=Lax` Cookie，后续接口从 Cookie 恢复当前用户；未选择用户时默认为 Alice。Diana 可从页面右上角进入“用户与角色”，新建用户会立即出现在演示切换入口。
 
 ## 状态流转
 
@@ -73,7 +75,7 @@ Policy --> DB[(SQLite WAL)]
 
 当前交付是一个适合演示和单机部署的模块化单体：
 
-- React 19 + TypeScript + Vite 负责审核工作台。
+- React 19 + TypeScript + Vite 负责单页全景审核工作台和 ADMIN 管理中心。
 - Fastify 5 + Zod 负责 API、严格输入校验和服务端权限。
 - Node.js 内置 `node:sqlite` + 直接 SQL 负责持久化。
 - SQLite 使用 WAL、`busy_timeout` 和 `BEGIN IMMEDIATE` 串行化关键写事务。
@@ -251,7 +253,6 @@ Chen 复核并通过。预期内容成为 `APPROVED`，R2 进度为 `2/2`；R2 �
 - HIGH R2 从 `0/2` 重新计票，并由 Bob、Chen 两位不同审核人完成 `2/2`。
 - Alice 不能自审；Diana 可以查看全部历史，但不能提交审核决定。
 
-
 ## 验证
 
 运行完整本地门禁：
@@ -276,6 +277,11 @@ npm run build
 - 拒绝后编辑和重提，旧轮快照不变且不参与新轮计票。
 - 相同幂等请求重放，以及相同 key 对应不同请求时冲突。
 - LOW 轮次中通过与拒绝并发竞争时只有一个成功终态。
+- 严格 DTO 拒绝客户端伪造身份、状态、票数和审核人字段。
+- 旧标签页跨越提交和拒绝后仍因版本过期而无法覆盖工作副本。
+- 统一工作区按服务端身份去重并标注我发起、待处理、已参与和 ADMIN 队列。
+- ADMIN 用户管理、最后管理员保护，以及撤销审核人不会卡住开放轮次。
+- 提交事务中途失败时，快照、轮次和幂等结果整体回滚；同 key 可安全重试。
 - 48 条演示数据的幂等生成、状态分布和关键数据库不变量。
 
 当前测试使用 Fastify `inject()` 和内存 SQLite。PostgreSQL 行锁、确定性并发屏障、故障注入与浏览器 E2E 的完整规划见[测试方案](docs/reviewflow-test-plan.md)，这些属于后续生产化门禁。
@@ -310,16 +316,17 @@ npm run seed:demo
 - 并发终态示例。
 - 账户、支付、隐私、社区、营销、客服、配送和通知等内容类型。
 
-工作台支持队列概览、标题搜索、状态/风险筛选和独立滚动。重复执行种子不会创建重复数据，场景和建议演示顺序见[演示场景](docs/demo-scenarios.md)。
+工作台在同一页面展开当前身份可见的所有语义队列，支持队列概览、标题/作者搜索、状态/风险筛选和独立滚动；右侧持续展示请求生命周期、当前轮次和不可变历史。重复执行种子不会创建重复数据，场景和建议演示顺序见[演示场景](docs/demo-scenarios.md)。
 
 ## API 概览
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
 | `GET` | `/api/health` | 健康检查 |
-| `GET` | `/api/users` | 获取预置用户 |
+| `GET` | `/api/users` | 获取演示切换入口中的用户 |
 | `GET` | `/api/me` | 获取服务端当前用户 |
 | `POST` | `/api/session/switch` | 切换 Demo 用户并写入签名 Cookie |
+| `GET` | `/api/workspace` | 获取与当前用户相关的去重全景队列 |
 | `GET` | `/api/contents?scope=mine` | 查看我的内容 |
 | `GET` | `/api/contents?scope=all` | ADMIN 查看全部内容 |
 | `POST` | `/api/contents` | 创建草稿 |
@@ -329,8 +336,11 @@ npm run seed:demo
 | `GET` | `/api/contents/:id/history` | 查看完整审核历史 |
 | `GET` | `/api/reviews/pending` | 查看待我审核的内容 |
 | `POST` | `/api/review-rounds/:id/decisions` | 提交 APPROVE 或 REJECT 决定 |
+| `GET` | `/api/admin/users` | ADMIN 查看用户、角色和业务统计 |
+| `POST` | `/api/admin/users` | ADMIN 创建演示用户 |
+| `PATCH` | `/api/admin/users/:id` | ADMIN 修改名称和叠加角色 |
 
-创建、编辑、提交和审核决定都要求有效的 `Idempotency-Key`。身份、角色、作者关系、状态、版本和轮次会在服务端重新校验，前端按钮只负责改善交互，不构成安全边界。
+创建、编辑、提交、审核决定和用户管理写请求都要求有效的 `Idempotency-Key`。身份、角色、作者关系、状态、版本和轮次会在服务端重新校验，前端按钮只负责改善交互，不构成安全边界。
 
 ## 一致性设计
 
@@ -392,12 +402,11 @@ reviewflow/
 ├── src/                 # React 审核工作台
 │   ├── components/      # 内容编辑、详情和状态组件
 │   ├── api.ts           # 前端 API 与幂等请求封装
-│   └── App.tsx          # 用户切换、队列和详情编排
+│   └── App.tsx          # 用户切换、统一队列、详情和管理中心编排
 ├── server/              # Fastify API、SQLite schema、事务和测试
 ├── public/docs/         # 在线 HTML 设计、测试、验收与运行文档
-├── docs/                # 架构、设计、评审、测试和演示文档
+├── docs/                # 架构、设计、评审、测试、演示文档和 PC 截图
 ├── deploy/              # systemd、Caddy、Nginx 与腾讯云部署说明
-├── artifacts/           # 桌面与移动端验证截图
 ├── compose.yaml
 └── Dockerfile
 ```
@@ -433,7 +442,9 @@ reviewflow/
 - 风险等级可在 `DRAFT` 或 `REJECTED` 状态修改，新轮按提交时风险冻结阈值。
 - 被拒绝后允许不修改内容直接重提。
 - 已通过内容不能编辑或重新提交。
-- 删除、撤回、申诉、通知、SLA 和运行期角色管理不在当前范围内。
+- 用户管理只支持创建、改名和角色分配；不提供删除，以免破坏内容与审核历史引用。
+- 系统阻止移除最后一个 ADMIN；撤销 REVIEWER 时会校验剩余票数和未决定审核人，避免卡住开放轮次。
+- 删除内容、撤回、申诉、通知和 SLA 不在当前范围内。
 - 当前身份切换只用于演示，不具备真实认证系统的安全属性。
 - 当前 SQLite 实现只支持单应用实例，不支持横向扩容或滚动多副本部署。
 - 当前没有 Testcontainers PostgreSQL 测试和 Playwright E2E；对应方案已经文档化，但不能视为已通过的测试。
