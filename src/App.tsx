@@ -10,7 +10,7 @@ import {
   ShieldCheck,
   X,
 } from 'lucide-react'
-import { useDeferredValue, useEffect, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { api, errorMessage } from './api'
 import './App.css'
 import { ContentDetail } from './components/ContentDetail'
@@ -60,26 +60,10 @@ function App() {
   const [query, setQuery] = useState('')
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('ALL')
   const [riskFilter, setRiskFilter] = useState<RiskFilter>('ALL')
-  const deferredQuery = useDeferredValue(query)
 
   useEffect(() => {
     void initialize()
   }, [])
-
-  useEffect(() => {
-    if (loading) return
-    const matchingItems = items.filter((item) =>
-      matchesContentFilters(item, deferredQuery, statusFilter, riskFilter),
-    )
-    const selectedId = detail?.content.id
-    if (matchingItems.length === 0) {
-      if (selectedId) setDetail(null)
-      return
-    }
-    if (!selectedId || !matchingItems.some((item) => item.id === selectedId)) {
-      void openContent(matchingItems[0].id)
-    }
-  }, [deferredQuery, detail?.content.id, items, loading, riskFilter, statusFilter])
 
   async function initialize() {
     setLoading(true)
@@ -126,7 +110,7 @@ function App() {
     try {
       const currentUser = await api.switchUser(userId)
       const nextView = firstView(currentUser)
-      resetFilters()
+      clearFilterState()
       setMe(currentUser)
       setView(nextView)
       await loadWorkspace(nextView)
@@ -137,10 +121,34 @@ function App() {
     }
   }
 
-  function resetFilters() {
+  function clearFilterState() {
     setQuery('')
     setStatusFilter('ALL')
     setRiskFilter('ALL')
+  }
+
+  function applyFilters(
+    nextQuery: string,
+    nextStatus: StatusFilter,
+    nextRisk: RiskFilter,
+  ) {
+    setQuery(nextQuery)
+    setStatusFilter(nextStatus)
+    setRiskFilter(nextRisk)
+
+    const matchingItems = items.filter((item) =>
+      matchesContentFilters(item, nextQuery, nextStatus, nextRisk),
+    )
+    const selectedId = detail?.content.id
+    if (matchingItems.length === 0) {
+      setDetail(null)
+    } else if (!selectedId || !matchingItems.some((item) => item.id === selectedId)) {
+      void openContent(matchingItems[0].id)
+    }
+  }
+
+  function resetFilters() {
+    applyFilters('', 'ALL', 'ALL')
   }
 
   async function openContent(contentId: string) {
@@ -208,7 +216,7 @@ function App() {
 
   const views = me ? availableViews(me) : []
   const filteredItems = items.filter((item) =>
-    matchesContentFilters(item, deferredQuery, statusFilter, riskFilter),
+    matchesContentFilters(item, query, statusFilter, riskFilter),
   )
   const hasFilters = query.trim().length > 0 || statusFilter !== 'ALL' || riskFilter !== 'ALL'
   const statusCounts = {
@@ -282,7 +290,7 @@ function App() {
             key={item}
             className={view === item ? 'active' : ''}
             onClick={() => {
-              resetFilters()
+              clearFilterState()
               setView(item)
               void loadWorkspace(item)
             }}
@@ -367,7 +375,9 @@ function App() {
                 type="search"
                 value={query}
                 placeholder="搜索标题或作者"
-                onChange={(event) => setQuery(event.target.value)}
+                onChange={(event) =>
+                  applyFilters(event.target.value, statusFilter, riskFilter)
+                }
               />
             </label>
             <div className="filter-options">
@@ -375,7 +385,9 @@ function App() {
                 <span>状态</span>
                 <select
                   value={statusFilter}
-                  onChange={(event) => setStatusFilter(event.target.value as StatusFilter)}
+                  onChange={(event) =>
+                    applyFilters(query, event.target.value as StatusFilter, riskFilter)
+                  }
                 >
                   <option value="ALL">全部状态</option>
                   <option value="DRAFT">草稿</option>
@@ -388,7 +400,9 @@ function App() {
                 <span>风险</span>
                 <select
                   value={riskFilter}
-                  onChange={(event) => setRiskFilter(event.target.value as RiskFilter)}
+                  onChange={(event) =>
+                    applyFilters(query, statusFilter, event.target.value as RiskFilter)
+                  }
                 >
                   <option value="ALL">全部风险</option>
                   <option value="LOW">LOW</option>
