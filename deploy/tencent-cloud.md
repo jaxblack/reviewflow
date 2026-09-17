@@ -30,6 +30,76 @@ curl -I https://qlili.com/reviewflow/
 
 生产会话密钥只存放在远端 `shared/reviewflow.env`，权限为 600，不进入仓库。用户切换是 Demo 登录替身，不代表真实认证系统。
 
+## GitHub Actions CI/CD
+
+`.github/workflows/ci.yml` 是合并门禁：Pull Request 和 `main` 分支提交会执行 lint、自动化测试、TypeScript/前端生产构建，以及 Docker 容器健康检查。建议在 GitHub 分支保护中要求以下检查通过后才能合并：
+
+- `Lint, test, and build`
+- `Build and smoke-test container`
+
+`.github/workflows/deploy-production.yml` 只接收当前仓库 `main` 分支成功完成的 CI，不会部署来自 fork 或其他分支的代码。首次启用前完成以下配置。
+
+### 1. 初始化服务器
+
+服务器需要安装 Node.js 22.5 或更高版本、npm、curl，并为部署用户启用 user systemd。目录和生产环境文件只需初始化一次：
+
+```bash
+mkdir -p ~/apps/reviewflow/{releases,shared/data}
+install -m 600 /dev/null ~/apps/reviewflow/shared/reviewflow.env
+secret=$(openssl rand -hex 32)
+printf 'SESSION_SECRET=%s\n' "$secret" \
+  > ~/apps/reviewflow/shared/reviewflow.env
+loginctl enable-linger "$USER"
+```
+
+`loginctl enable-linger` 如果被系统策略限制，需要由服务器管理员执行。部署用户必须能使用 `systemctl --user`，但不需要 sudo 发布应用。
+
+### 2. 创建部署密钥
+
+在可信终端生成专用密钥，不要复用个人 SSH 密钥：
+
+```bash
+ssh-keygen -t ed25519 -C reviewflow-github-actions \
+  -f ./reviewflow-deploy -N ''
+ssh-copy-id -i ./reviewflow-deploy.pub ubuntu@SERVER_IP
+ssh-keyscan -H SERVER_IP > ./reviewflow-known-hosts
+```
+
+在首次接受主机指纹前，应通过云控制台或其他可信渠道核对指纹。配置完成并写入 GitHub 后，删除本地私钥副本。
+
+### 3. 配置 GitHub Environment
+
+在仓库 `Settings > Environments` 创建 `production`：
+
+1. 将部署分支限制为 `main`。
+2. 配置 required reviewers，使生产发布在 CI 成功后仍需人工批准。
+3. 添加 Environment secrets：
+
+| Secret | 内容 |
+| --- | --- |
+| `PRODUCTION_HOST` | 服务器域名或 IP |
+| `PRODUCTION_USER` | 部署用户，例如 `ubuntu` |
+| `PRODUCTION_SSH_PRIVATE_KEY` | `reviewflow-deploy` 私钥全文 |
+| `PRODUCTION_SSH_KNOWN_HOSTS` | 已核验的 `known_hosts` 内容 |
+
+`SESSION_SECRET`、数据库文件和 Caddy 配置不放入 GitHub Secrets，也不会被流水线覆盖。
+
+### 4. 发布与回滚
+
+合并到 `main` 后，CI 成功会触发 production deployment。流水线以 `<commit-sha>-<run-attempt>` 创建 release，安装锁定的生产依赖，更新 systemd unit，原子切换 `current` 并检查本机健康端点。
+
+如果新版本在 20 秒内未通过健康检查，脚本会自动恢复之前的 `current` 并重启服务。若需要人工回滚，可在服务器执行：
+
+```bash
+previous=~/apps/reviewflow/releases/PREVIOUS_RELEASE_ID
+ln -s "$previous" ~/apps/reviewflow/.current-rollback
+mv -Tf ~/apps/reviewflow/.current-rollback ~/apps/reviewflow/current
+systemctl --user restart reviewflow
+curl --fail http://127.0.0.1:3000/api/health
+```
+
+发布目录不会由自动化任务删除，以免误删仍需回滚的版本。确认版本稳定并完成数据库备份后，可人工保留最近若干 release。
+
 ## Docker 备选方案
 
 ## 适用范围

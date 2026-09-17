@@ -1,0 +1,95 @@
+name: Deploy production
+
+on:
+  workflow_run:
+    workflows:
+      - CI
+    types:
+      - completed
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy verified main revision
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_branch == 'main' &&
+      github.event.workflow_run.head_repository.full_name == github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    environment:
+      name: production
+      url: https://qlili.com/reviewflow/
+
+    steps:
+      - name: Check out verified revision
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build release
+        run: |
+          npm run build
+          tar -czf "$RUNNER_TEMP/reviewflow-release.tgz" \
+            package.json \
+            package-lock.json \
+            dist \
+            dist-server \
+            deploy/reviewflow.service
+
+      - name: Configure SSH
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.PRODUCTION_SSH_PRIVATE_KEY }}
+          SSH_KNOWN_HOSTS: ${{ secrets.PRODUCTION_SSH_KNOWN_HOSTS }}
+        run: |
+          install -d -m 700 "$HOME/.ssh"
+          printf '%s\n' "$SSH_PRIVATE_KEY" > "$HOME/.ssh/reviewflow"
+          printf '%s\n' "$SSH_KNOWN_HOSTS" > "$HOME/.ssh/known_hosts"
+          chmod 600 "$HOME/.ssh/reviewflow" "$HOME/.ssh/known_hosts"
+
+      - name: Upload release
+        env:
+          PRODUCTION_HOST: ${{ secrets.PRODUCTION_HOST }}
+          PRODUCTION_USER: ${{ secrets.PRODUCTION_USER }}
+        run: |
+          scp -i "$HOME/.ssh/reviewflow" \
+            "$RUNNER_TEMP/reviewflow-release.tgz" \
+            deploy/install-release.sh \
+            "$PRODUCTION_USER@$PRODUCTION_HOST:/tmp/"
+
+      - name: Activate release
+        env:
+          PRODUCTION_HOST: ${{ secrets.PRODUCTION_HOST }}
+          PRODUCTION_USER: ${{ secrets.PRODUCTION_USER }}
+          VERIFIED_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          release_id="${VERIFIED_SHA::12}-${GITHUB_RUN_ATTEMPT}"
+          ssh -i "$HOME/.ssh/reviewflow" \
+            "$PRODUCTION_USER@$PRODUCTION_HOST" \
+            "bash /tmp/install-release.sh /tmp/reviewflow-release.tgz '$release_id'"
+
+      - name: Remove uploaded files
+        if: always()
+        env:
+          PRODUCTION_HOST: ${{ secrets.PRODUCTION_HOST }}
+          PRODUCTION_USER: ${{ secrets.PRODUCTION_USER }}
+        run: |
+          ssh -i "$HOME/.ssh/reviewflow" \
+            "$PRODUCTION_USER@$PRODUCTION_HOST" \
+            "rm -f /tmp/install-release.sh /tmp/reviewflow-release.tgz" || true

@@ -144,6 +144,17 @@ npm run build
 
 当前测试使用 Fastify `inject()` 和内存 SQLite。PostgreSQL 行锁、确定性并发屏障、故障注入与浏览器 E2E 的完整规划见[测试方案](docs/reviewflow-test-plan.md)，这些属于后续生产化门禁。
 
+## CI/CD
+
+仓库使用 GitHub Actions 执行两段式流水线：
+
+- **CI**：Pull Request 和 `main` 分支提交均执行 `npm ci`、`npm run check`，随后构建生产 Docker 镜像并启动容器验证 `/api/health`。
+- **CD**：只有当前仓库 `main` 分支的 CI 全部成功后才会进入 `production` Environment。流水线构建不可变 release，通过 SSH 上传到腾讯云，原子切换 `current` 软链并重启单实例 systemd 服务；健康检查失败时恢复上一个 release。
+
+生产部署需要先在 GitHub 中为 `production` Environment 配置审批人和部署分支保护，并设置 `PRODUCTION_HOST`、`PRODUCTION_USER`、`PRODUCTION_SSH_PRIVATE_KEY`、`PRODUCTION_SSH_KNOWN_HOSTS`。`SESSION_SECRET` 不经过 CI/CD，仍只保存在服务器的 `shared/reviewflow.env`。完整初始化和密钥配置见[腾讯云单机部署](deploy/tencent-cloud.md)。
+
+当前 SQLite 架构只允许单应用实例，因此 CD 使用短暂停机重启，不执行多副本滚动发布。需要零停机或横向扩容时，应先迁移 PostgreSQL。
+
 ## 演示数据
 
 生产构建后可以幂等写入 48 条演示内容：
@@ -241,6 +252,7 @@ Compose 只把服务绑定到 `127.0.0.1`，用于通过 Caddy 或 Nginx 提供 
 
 ```text
 reviewflow/
+├── .github/workflows/   # GitHub Actions CI 与生产部署
 ├── src/                 # React 审核工作台
 │   ├── components/      # 内容编辑、详情和状态组件
 │   ├── api.ts           # 前端 API 与幂等请求封装
