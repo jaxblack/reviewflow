@@ -1,0 +1,17 @@
+services:
+  reviewflow:
+    build: .
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      DATA_DIR: /data
+      SESSION_SECRET: ${SESSION_SECRET:?SESSION_SECRET must be set in .env}
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
+    ports:
+      - "127.0.0.1:${REVIEWFLOW_PORT:-3000}:3000"
+    volumes:
+      - reviewflow-data:/data
+
+volumes:
+  reviewflow-data:

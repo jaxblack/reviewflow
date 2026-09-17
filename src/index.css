@@ -1,0 +1,89 @@
+:root {
+  font-family: 'Avenir Next', 'Trebuchet MS', sans-serif;
+  color: #1b2528;
+  background-color: #f3f5f3;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  --ink: #1b2528;
+  --muted: #667377;
+  --faint: #8d989b;
+  --surface: #ffffff;
+  --surface-muted: #f7f8f6;
+  --line: #dce2df;
+  --line-strong: #c7d0cc;
+  --accent: #0f766e;
+  --accent-dark: #0a5752;
+  --accent-soft: #e4f3f0;
+  --green: #24724b;
+  --green-soft: #e8f5ed;
+  --amber: #99620b;
+  --amber-soft: #fff4d9;
+  --red: #b23a39;
+  --red-soft: #fae9e7;
+  --blue: #315c8a;
+  --blue-soft: #e8f0f8;
+  --shadow: 0 12px 40px rgba(36, 55, 51, 0.1);
+  letter-spacing: 0;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  min-width: 320px;
+  min-height: 100%;
+  background-color: #f3f5f3;
+  background-image:
+    linear-gradient(rgba(27, 37, 40, 0.025) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(27, 37, 40, 0.025) 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+  letter-spacing: 0;
+}
+
+button,
+select {
+  cursor: pointer;
+}
+
+button:disabled,
+select:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+button:focus-visible,
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible,
+summary:focus-visible {
+  outline: 3px solid rgba(15, 118, 110, 0.22);
+  outline-offset: 2px;
+}
+
+h1,
+h2,
+h3,
+p {
+  margin-top: 0;
+}
+
+svg {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 auto;
+}

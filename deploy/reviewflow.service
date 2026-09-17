@@ -1,0 +1,23 @@
+[Unit]
+Description=ReviewFlow MVP
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/apps/reviewflow/current
+Environment=NODE_ENV=production
+Environment=HOST=127.0.0.1
+Environment=PORT=3000
+Environment=DATA_DIR=%h/apps/reviewflow/shared/data
+Environment=COOKIE_SECURE=true
+Environment=COOKIE_PATH=/reviewflow
+EnvironmentFile=%h/apps/reviewflow/shared/reviewflow.env
+ExecStart=/usr/bin/node dist-server/server/index.js
+Restart=on-failure
+RestartSec=3
+TimeoutStopSec=15
+UMask=0077
+
+[Install]
+WantedBy=default.target

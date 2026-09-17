@@ -1,0 +1,7 @@
+# ReviewFlow Demo 为公开路径，不加入站点的 basic_auth matcher。
+
+redir /reviewflow /reviewflow/ 308
+
+handle_path /reviewflow/* {
+	reverse_proxy 127.0.0.1:3000
+}

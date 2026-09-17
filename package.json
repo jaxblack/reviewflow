@@ -1,0 +1,43 @@
+{
+  "name": "reviewflow",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "engines": {
+    "node": ">=22.5"
+  },
+  "scripts": {
+    "dev": "concurrently -k -n api,web -c green,cyan \"npm:dev:api\" \"npm:dev:web\"",
+    "dev:api": "NODE_ENV=development PORT=3001 tsx watch server/index.ts",
+    "dev:web": "vite",
+    "build": "tsc -b && vite build && tsc -p tsconfig.server.json",
+    "start": "node dist-server/server/index.js",
+    "seed:demo": "node dist-server/server/seed-demo.js",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "oxlint src server",
+    "check": "npm run lint && npm test && npm run build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@fastify/cookie": "^11.1.2",
+    "@fastify/static": "^10.1.4",
+    "fastify": "^5.12.5",
+    "lucide-react": "^1.47.0",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@types/node": "^24.13.3",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.7",
+    "@vitejs/plugin-react": "^6.1.1",
+    "concurrently": "^10.0.5",
+    "oxlint": "^1.81.0",
+    "tsx": "^4.23.13",
+    "typescript": "~6.0.2",
+    "vite": "^8.3.0",
+    "vitest": "^5.0.1"
+  }
+}
