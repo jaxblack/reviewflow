@@ -370,6 +370,14 @@ function App() {
 
   async function startGuideStep(target: GuideTarget) {
     setGuideOpen(false)
+    if (
+      target.action === 'SUBMIT' &&
+      me?.id === target.userId &&
+      detail?.content.status === 'DRAFT'
+    ) {
+      showNotice('已定位当前草稿，请点击“提交审核”')
+      return
+    }
     await changeUser(target.userId, {
       scope: target.scope,
       query: target.query,
@@ -634,7 +642,7 @@ function App() {
           <button type="button" onClick={() => setGuideOpen(true)}>
             <CircleHelp aria-hidden="true" />
             <span>新手引导</span>
-            <b>5 步</b>
+            <b>6 步</b>
           </button>
           {me?.roles.includes('ADMIN') && (
             <button type="button" onClick={openAdmin}>

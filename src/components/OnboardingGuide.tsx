@@ -17,7 +17,7 @@ export interface GuideTarget {
   query: string
   status: 'ALL' | 'DRAFT' | 'IN_REVIEW' | 'APPROVED' | 'REJECTED'
   risk: 'ALL' | Risk
-  action?: 'CREATE' | 'ADMIN'
+  action?: 'CREATE' | 'SUBMIT' | 'ADMIN'
 }
 
 interface OnboardingGuideProps {
@@ -38,13 +38,13 @@ const guideSteps: Array<{
   {
     actor: 'Alice',
     role: '提交人',
-    title: '创建并提交内容',
+    title: '创建草稿',
     icon: FilePlus2,
     operations: [
       '填写标题、正文和风险等级并保存草稿。',
-      '在详情确认工作副本后点击“提交审核”。',
+      '确认详情状态仍为“草稿”，内容可以继续编辑。',
     ],
-    expected: '内容进入 IN_REVIEW，并创建 R1 不可变快照。',
+    expected: '内容保持 DRAFT，尚未产生审核轮次和不可变快照。',
     target: {
       userId: 'user-alice',
       scope: 'MINE',
@@ -52,6 +52,25 @@ const guideSteps: Array<{
       status: 'ALL',
       risk: 'ALL',
       action: 'CREATE',
+    },
+  },
+  {
+    actor: 'Alice',
+    role: '提交人',
+    title: '提交审核',
+    icon: Send,
+    operations: [
+      '保持刚创建的草稿，或打开“周末运营排期草稿”。',
+      '在详情确认工作副本后点击“提交审核”。',
+    ],
+    expected: '内容进入 IN_REVIEW，并创建 R1 不可变快照。',
+    target: {
+      userId: 'user-alice',
+      scope: 'MINE',
+      query: '周末运营排期草稿',
+      status: 'DRAFT',
+      risk: 'ALL',
+      action: 'SUBMIT',
     },
   },
   {
@@ -159,7 +178,7 @@ export function OnboardingGuide({
           <CheckCircle2 aria-hidden="true" />
           <div>
             <p className="eyebrow">GUIDED ACCEPTANCE</p>
-            <h2 id="guide-title">五步完成核心验收</h2>
+            <h2 id="guide-title">六步完成核心验收</h2>
             <span className="dialog-description">
               每一步都会切换到对应角色并定位示例数据。
             </span>
