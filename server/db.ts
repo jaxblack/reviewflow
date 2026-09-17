@@ -1,6 +1,11 @@
 import { mkdirSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
+import {
+  configureDatabaseCapacity,
+  resolveCapacityLimits,
+  type CapacityLimits,
+} from './capacity.js'
 
 export const USER_IDS = {
   alice: 'user-alice',
@@ -112,13 +117,18 @@ export function defaultDatabasePath(): string {
   return join(process.env.DATA_DIR ?? '.data', 'reviewflow.db')
 }
 
-export function createDatabase(filename = defaultDatabasePath()): DatabaseSync {
+export function createDatabase(
+  filename = defaultDatabasePath(),
+  capacityOverrides: Partial<CapacityLimits> = {},
+): DatabaseSync {
   if (filename !== ':memory:') {
     mkdirSync(dirname(filename), { recursive: true })
   }
 
   const database = new DatabaseSync(filename)
   database.exec('PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 5000;')
+  const capacityLimits = resolveCapacityLimits(capacityOverrides)
+  configureDatabaseCapacity(database, capacityLimits)
   if (filename !== ':memory:') {
     database.exec('PRAGMA journal_mode = WAL; PRAGMA synchronous = NORMAL;')
   }

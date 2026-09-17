@@ -312,6 +312,7 @@ npm run build
 - 统一工作区按服务端身份去重并标注我发起、待处理、已参与和 ADMIN 队列。
 - ADMIN 用户管理、最后管理员保护，以及撤销审核人不会卡住开放轮次。
 - 提交事务中途失败时，快照、轮次和幂等结果整体回滚；同 key 可安全重试。
+- 公开写接口的跨路由 IP 限流、用户/内容/轮次/幂等硬配额和过期记录回收。
 - 48 条演示数据的幂等生成、状态分布和关键数据库不变量。
 
 当前测试使用 Fastify `inject()` 和内存 SQLite。PostgreSQL 行锁、确定性并发屏障、故障注入与浏览器 E2E 的完整规划见[测试方案](docs/reviewflow-test-plan.md)，这些属于后续生产化门禁。
@@ -397,6 +398,10 @@ npm run seed:demo
 
 SQLite 的 `BEGIN IMMEDIATE` 保证关键写事务串行执行。两个请求同时尝试通过或拒绝同一轮时，先提交者决定终态；后续请求重新读取状态并返回 409，不会留下失败方的审核决定。
 
+### 公开 Demo 容量防护
+
+公开环境不能依赖身份切换入口阻止滥用。所有可改变会话或持久化状态的接口共享每 IP 每分钟 30 次写入额度；达到用户、内容、单内容轮次、幂等记录或 SQLite 空间上限后返回 `507 CAPACITY_LIMIT_REACHED`，失败事务不再增长数据库。默认 SQLite 主库硬限 128 MiB，并预留 8 MiB 写入空间。
+
 ## Docker
 
 ```bash
@@ -425,6 +430,14 @@ Compose 只把服务绑定到 `127.0.0.1`，用于通过 Caddy 或 Nginx 提供 
 | `COOKIE_SECURE` | `false` | HTTPS 环境设置为 `true` |
 | `COOKIE_PATH` | `/` | 子路径部署设置为 `/reviewflow` |
 | `REVIEWFLOW_PORT` | `3000` | Compose 映射到宿主机的本地端口 |
+| `REVIEWFLOW_WRITE_RATE_LIMIT` | `30` | 同一客户端每分钟共享写入次数 |
+| `REVIEWFLOW_MAX_USERS` | `100` | 用户数量硬上限 |
+| `REVIEWFLOW_MAX_CONTENTS` | `500` | 内容数量硬上限 |
+| `REVIEWFLOW_MAX_ROUNDS_PER_CONTENT` | `20` | 单内容审核轮次硬上限 |
+| `REVIEWFLOW_MAX_IDEMPOTENCY_RECORDS` | `2000` | 未过期幂等记录硬上限 |
+| `REVIEWFLOW_IDEMPOTENCY_TTL_HOURS` | `24` | 幂等响应保留小时数 |
+| `REVIEWFLOW_MAX_DATABASE_BYTES` | `134217728` | SQLite 主库最大字节数 |
+| `REVIEWFLOW_DATABASE_RESERVE_BYTES` | `8388608` | 写入停止前保留空间 |
 
 ## 项目结构
 
@@ -451,6 +464,7 @@ reviewflow/
 | --- | --- |
 | [HTML 文档中心](https://qlili.com/reviewflow/docs/) | 在线浏览系统设计、测试报告、验收报告和部署运行说明 |
 | [边界与决策](https://qlili.com/reviewflow/docs/edge-cases.html) | 原始歧义、权限可见性、状态版本、并发幂等、角色变化和待确认项 |
+| [P0 安全审查](docs/security-review.md) | 公网威胁模型、已修复漏洞、防护边界和残余风险 |
 | [HTML 生成与维护](docs/html-documentation.md) | 模板目录、manifest、生成命令、更新流程与故障排查 |
 | [当前实现架构](docs/architecture.md) | SQLite MVP 的状态机、数据模型、一致性和部署边界 |
 | [完整系统设计](docs/reviewflow-system-design.md) | PostgreSQL 目标模型、DDL、API、权限、事务与实施顺序 |

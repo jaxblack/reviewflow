@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto'
 import type { DatabaseSync } from 'node:sqlite'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { buildApp } from './app.js'
+import { defaultCapacityLimits } from './capacity.js'
 import { createDatabase, USER_IDS } from './db.js'
 
 interface DetailResponse {
@@ -547,6 +548,247 @@ describe('ReviewFlow core API', () => {
     const retry = await app.inject(request)
     expect(retry.statusCode).toBe(201)
     expect(retry.headers['idempotency-replayed']).toBe('false')
+  })
+
+  it('stops persistent growth when public demo capacity is exhausted', async () => {
+    const limitedDatabase = createDatabase(':memory:')
+    const limitedApp = await buildApp({
+      database: limitedDatabase,
+      sessionSecret: 'limited-session-secret-with-enough-length',
+      capacityLimits: {
+        maxUsers: 5,
+        maxContents: 1,
+        maxRoundsPerContent: 1,
+      },
+    })
+
+    try {
+      const aliceResponse = await limitedApp.inject({
+        method: 'POST',
+        url: '/api/session/switch',
+        payload: { userId: USER_IDS.alice },
+      })
+      const aliceCookie = String(aliceResponse.headers['set-cookie']).split(';')[0]
+      const first = await limitedApp.inject({
+        method: 'POST',
+        url: '/api/contents',
+        headers: headers(aliceCookie),
+        payload: { title: 'Within capacity', body: 'Body', risk: 'LOW' },
+      })
+      expect(first.statusCode).toBe(201)
+
+      const blocked = await limitedApp.inject({
+        method: 'POST',
+        url: '/api/contents',
+        headers: headers(aliceCookie),
+        payload: { title: 'Over capacity', body: 'Body', risk: 'LOW' },
+      })
+      expect(blocked.statusCode).toBe(507)
+      expect(blocked.json().error.code).toBe('CAPACITY_LIMIT_REACHED')
+
+      const firstDetail = first.json() as DetailResponse
+      const submitted = await limitedApp.inject({
+        method: 'POST',
+        url: `/api/contents/${firstDetail.content.id}/submit`,
+        headers: headers(aliceCookie),
+        payload: { expectedVersion: firstDetail.content.version },
+      })
+      expect(submitted.statusCode).toBe(201)
+      const bobResponse = await limitedApp.inject({
+        method: 'POST',
+        url: '/api/session/switch',
+        payload: { userId: USER_IDS.bob },
+      })
+      const bobCookie = String(bobResponse.headers['set-cookie']).split(';')[0]
+      const rejected = await limitedApp.inject({
+        method: 'POST',
+        url: `/api/review-rounds/${submitted.json().history[0].id}/decisions`,
+        headers: headers(bobCookie),
+        payload: { decision: 'REJECT', comment: 'Revise' },
+      })
+      expect(rejected.statusCode).toBe(200)
+      const roundBlocked = await limitedApp.inject({
+        method: 'POST',
+        url: `/api/contents/${firstDetail.content.id}/submit`,
+        headers: headers(aliceCookie),
+        payload: { expectedVersion: rejected.json().content.version },
+      })
+      expect(roundBlocked.statusCode).toBe(507)
+      expect(roundBlocked.json().error.code).toBe('CAPACITY_LIMIT_REACHED')
+
+      const dianaResponse = await limitedApp.inject({
+        method: 'POST',
+        url: '/api/session/switch',
+        payload: { userId: USER_IDS.diana },
+      })
+      const dianaCookie = String(dianaResponse.headers['set-cookie']).split(';')[0]
+      const eva = await limitedApp.inject({
+        method: 'POST',
+        url: '/api/admin/users',
+        headers: headers(dianaCookie),
+        payload: { name: 'Eva', roles: ['SUBMITTER'] },
+      })
+      expect(eva.statusCode).toBe(201)
+      const userBlocked = await limitedApp.inject({
+        method: 'POST',
+        url: '/api/admin/users',
+        headers: headers(dianaCookie),
+        payload: { name: 'Frank', roles: ['REVIEWER'] },
+      })
+      expect(userBlocked.statusCode).toBe(507)
+      expect(userBlocked.json().error.code).toBe('CAPACITY_LIMIT_REACHED')
+
+      const facts = limitedDatabase.prepare(`
+        SELECT
+          (SELECT count(*) FROM contents) AS contents,
+          (SELECT count(*) FROM content_revisions) AS revisions,
+          (SELECT count(*) FROM review_rounds) AS rounds,
+          (SELECT count(*) FROM review_decisions) AS decisions,
+          (SELECT count(*) FROM users) AS users
+      `).get()
+      expect(facts).toEqual({
+        contents: 1,
+        revisions: 1,
+        rounds: 1,
+        decisions: 1,
+        users: 5,
+      })
+      const pageSize = limitedDatabase.prepare('PRAGMA page_size').get() as {
+        page_size: number
+      }
+      const maxPages = limitedDatabase.prepare('PRAGMA max_page_count').get() as {
+        max_page_count: number
+      }
+      const autoCheckpoint = limitedDatabase
+        .prepare('PRAGMA wal_autocheckpoint')
+        .get() as { wal_autocheckpoint: number }
+      const journalLimit = limitedDatabase
+        .prepare('PRAGMA journal_size_limit')
+        .get() as { journal_size_limit: number }
+      expect(maxPages.max_page_count * pageSize.page_size).toBeLessThanOrEqual(
+        defaultCapacityLimits.maxDatabaseBytes,
+      )
+      expect(autoCheckpoint.wal_autocheckpoint).toBe(256)
+      expect(journalLimit.journal_size_limit).toBeLessThanOrEqual(8 * 1024 * 1024)
+    } finally {
+      await limitedApp.close()
+      limitedDatabase.close()
+    }
+  })
+
+  it('rate limits public writes before they can consume persistent capacity', async () => {
+    const limitedDatabase = createDatabase(':memory:')
+    const limitedApp = await buildApp({
+      database: limitedDatabase,
+      sessionSecret: 'rate-limit-session-secret-with-enough-length',
+      writeRateLimitMax: 2,
+    })
+
+    try {
+      const forwardedIp = '203.0.113.10'
+      const switched = await limitedApp.inject({
+        method: 'POST',
+        url: '/api/session/switch',
+        remoteAddress: '127.0.0.1',
+        headers: { 'x-forwarded-for': forwardedIp },
+        payload: { userId: USER_IDS.alice },
+      })
+      expect(switched.statusCode).toBe(200)
+      const cookie = String(switched.headers['set-cookie']).split(';')[0]
+      const created = await limitedApp.inject({
+        method: 'POST',
+        url: '/api/contents',
+        remoteAddress: '127.0.0.1',
+        headers: {
+          cookie,
+          'idempotency-key': randomUUID(),
+          'x-forwarded-for': forwardedIp,
+        },
+        payload: { title: 'Allowed', body: 'Body', risk: 'LOW' },
+      })
+      expect(created.statusCode).toBe(201)
+
+      const blocked = await limitedApp.inject({
+        method: 'PATCH',
+        url: `/api/contents/${created.json().content.id}`,
+        remoteAddress: '127.0.0.1',
+        headers: {
+          cookie,
+          'idempotency-key': randomUUID(),
+          'x-forwarded-for': forwardedIp,
+        },
+        payload: {
+          title: 'Blocked',
+          body: 'Body',
+          risk: 'LOW',
+          expectedVersion: created.json().content.version,
+        },
+      })
+      expect(blocked.statusCode).toBe(429)
+      expect(blocked.json().error.code).toBe('RATE_LIMITED')
+
+      const facts = limitedDatabase.prepare(`
+        SELECT
+          (SELECT count(*) FROM contents) AS contents,
+          (SELECT count(*) FROM idempotency_requests) AS idempotency
+      `).get()
+      expect(facts).toEqual({ contents: 1, idempotency: 1 })
+    } finally {
+      await limitedApp.close()
+      limitedDatabase.close()
+    }
+  })
+
+  it('bounds idempotency storage while allowing expired records to be reclaimed', async () => {
+    const limitedDatabase = createDatabase(':memory:')
+    const limitedApp = await buildApp({
+      database: limitedDatabase,
+      sessionSecret: 'idempotency-cap-session-secret-with-enough-length',
+      capacityLimits: {
+        maxIdempotencyRecords: 1,
+        idempotencyTtlHours: 1,
+      },
+    })
+
+    try {
+      limitedDatabase.prepare(`
+        INSERT INTO idempotency_requests (
+          actor_id, operation, idempotency_key, request_hash,
+          status_code, response_body, created_at
+        ) VALUES (?, 'OLD_OPERATION', 'old-idempotency-key', 'hash', 200, '{}', ?)
+      `).run(USER_IDS.alice, new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString())
+
+      const created = await limitedApp.inject({
+        method: 'POST',
+        url: '/api/contents',
+        headers: { 'idempotency-key': randomUUID() },
+        payload: { title: 'After cleanup', body: 'Body', risk: 'LOW' },
+      })
+      expect(created.statusCode).toBe(201)
+
+      const blocked = await limitedApp.inject({
+        method: 'PATCH',
+        url: `/api/contents/${created.json().content.id}`,
+        headers: { 'idempotency-key': randomUUID() },
+        payload: {
+          title: 'No more idempotency capacity',
+          body: 'Body',
+          risk: 'LOW',
+          expectedVersion: created.json().content.version,
+        },
+      })
+      expect(blocked.statusCode).toBe(507)
+
+      const facts = limitedDatabase.prepare(`
+        SELECT
+          (SELECT count(*) FROM contents) AS contents,
+          (SELECT count(*) FROM idempotency_requests) AS idempotency
+      `).get()
+      expect(facts).toEqual({ contents: 1, idempotency: 1 })
+    } finally {
+      await limitedApp.close()
+      limitedDatabase.close()
+    }
   })
 
   async function sessionCookie(userId: string): Promise<string> {

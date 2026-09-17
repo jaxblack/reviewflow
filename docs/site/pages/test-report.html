@@ -45,7 +45,7 @@
           </header>
 
           <div class="metric-strip" aria-label="测试结果摘要">
-            <div class="metric"><strong>22/22</strong><span>自动化测试</span></div>
+            <div class="metric"><strong>25/25</strong><span>自动化测试</span></div>
             <div class="metric"><strong>0</strong><span>Lint 警告</span></div>
             <div class="metric"><strong>0</strong><span>构建错误</span></div>
             <div class="metric"><strong>0</strong><span>浏览器错误</span></div>
@@ -59,7 +59,7 @@
                 <thead><tr><th>门禁</th><th>执行方式</th><th>结果</th><th>证据摘要</th></tr></thead>
                 <tbody>
                   <tr><td>静态检查</td><td><code>npm run lint</code></td><td><span class="status pass">PASS</span></td><td>0 warning，0 error</td></tr>
-                  <tr><td>自动化测试</td><td><code>npm test</code></td><td><span class="status pass">PASS</span></td><td>3 个测试文件，22 个测试全部通过</td></tr>
+                  <tr><td>自动化测试</td><td><code>npm test</code></td><td><span class="status pass">PASS</span></td><td>3 个测试文件，25 个测试全部通过</td></tr>
                   <tr><td>生产构建</td><td><code>npm run build</code></td><td><span class="status pass">PASS</span></td><td>React、Vite、服务端 TypeScript 全部通过</td></tr>
                   <tr><td>远端构建</td><td>GitHub Actions · Ubuntu 24.04 · Node 24</td><td><span class="status pass">PASS</span></td><td>完整质量门禁与生产容器 smoke test</td></tr>
                   <tr><td>线上健康</td><td><code>GET /api/health</code></td><td><span class="status pass">PASS</span></td><td>HTTP 200，database=sqlite</td></tr>
@@ -91,7 +91,10 @@
                   <tr><td>T-13</td><td>旧版本冲突</td><td>内容重新进入可编辑状态后，旧标签页仍被版本校验拒绝</td><td><span class="status pass">PASS</span></td></tr>
                   <tr><td>T-14</td><td>事务故障回滚</td><td>提交中途失败时快照、轮次和幂等记录同时回滚</td><td><span class="status pass">PASS</span></td></tr>
                   <tr><td>T-15</td><td>HTML 文档契约</td><td>6 页结构、生成标记、结尾换行和本地链接持续有效</td><td><span class="status pass">PASS</span></td></tr>
-                  <tr><td>T-16</td><td>边界登记契约</td><td>91 个 ID 唯一，全部服务端错误码已记录，决策级别完整</td><td><span class="status pass">PASS</span></td></tr>
+                  <tr><td>T-16</td><td>边界登记契约</td><td>93 个 ID 唯一，全部服务端错误码已记录，决策级别完整</td><td><span class="status pass">PASS</span></td></tr>
+                  <tr><td>T-17</td><td>公网写入容量</td><td>用户、内容、轮次和幂等记录达到上限后返回 507，失败事务不增长</td><td><span class="status pass">PASS</span></td></tr>
+                  <tr><td>T-18</td><td>跨路由 IP 限流</td><td>仅信任回环代理，同一来源跨会话、内容和管理写接口共享 30 次/分钟额度</td><td><span class="status pass">PASS</span></td></tr>
+                  <tr><td>T-19</td><td>幂等记录回收</td><td>未过期记录受 2,000 条硬上限保护，24 小时后可回收空间</td><td><span class="status pass">PASS</span></td></tr>
                 </tbody>
               </table>
             </div>

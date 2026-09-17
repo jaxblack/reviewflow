@@ -116,6 +116,14 @@ curl --fail {{APPLICATION_URL}}api/health</pre>
                   <tr><td><code>COOKIE_SECURE</code></td><td>true</td><td>Cookie 仅通过 HTTPS 传输</td></tr>
                   <tr><td><code>COOKIE_PATH</code></td><td>/reviewflow</td><td>限制会话 Cookie 的 URL 范围</td></tr>
                   <tr><td><code>SESSION_SECRET</code></td><td>远端环境文件</td><td>签名会话，不得写入日志或代码库</td></tr>
+                  <tr><td><code>REVIEWFLOW_WRITE_RATE_LIMIT</code></td><td>30</td><td>同一客户端每分钟共享写入额度</td></tr>
+                  <tr><td><code>REVIEWFLOW_MAX_USERS</code></td><td>100</td><td>演示用户硬上限</td></tr>
+                  <tr><td><code>REVIEWFLOW_MAX_CONTENTS</code></td><td>500</td><td>内容硬上限</td></tr>
+                  <tr><td><code>REVIEWFLOW_MAX_ROUNDS_PER_CONTENT</code></td><td>20</td><td>单内容审核轮次上限</td></tr>
+                  <tr><td><code>REVIEWFLOW_MAX_IDEMPOTENCY_RECORDS</code></td><td>2000</td><td>未过期幂等记录上限</td></tr>
+                  <tr><td><code>REVIEWFLOW_IDEMPOTENCY_TTL_HOURS</code></td><td>24</td><td>幂等重放保证窗口</td></tr>
+                  <tr><td><code>REVIEWFLOW_MAX_DATABASE_BYTES</code></td><td>134217728</td><td>SQLite 主库 128 MiB 硬上限</td></tr>
+                  <tr><td><code>REVIEWFLOW_DATABASE_RESERVE_BYTES</code></td><td>8388608</td><td>低于 8 MiB 可用页时暂停写入</td></tr>
                 </tbody>
               </table>
             </div>

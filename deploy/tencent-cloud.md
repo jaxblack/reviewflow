@@ -28,7 +28,7 @@ curl -I https://qlili.com/reviewflow/
 
 最后一条命令应返回 `200`。用户切换仅用于演示，任何访问者都可以修改演示数据，因此不得录入真实业务内容。
 
-生产会话密钥只存放在远端 `shared/reviewflow.env`，权限为 600，不进入仓库。用户切换是 Demo 登录替身，不代表真实认证系统。
+生产会话密钥只存放在远端 `shared/reviewflow.env`，权限为 600，不进入仓库。用户切换是 Demo 登录替身，不代表真实认证系统。systemd 单元显式配置写入限流与容量上限；达到上限时应用拒绝写入，避免公开 Demo 持续增长 SQLite 并耗尽同机磁盘。
 
 ## GitHub Actions CI/CD
 

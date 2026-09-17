@@ -1,4 +1,5 @@
 import cookie from '@fastify/cookie'
+import rateLimit from '@fastify/rate-limit'
 import fastifyStatic from '@fastify/static'
 import Fastify, {
   type FastifyInstance,
@@ -10,6 +11,12 @@ import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import type { DatabaseSync } from 'node:sqlite'
 import { z, ZodError } from 'zod'
+import {
+  CapacityGuard,
+  CapacityLimitError,
+  resolveCapacityLimits,
+  type CapacityLimits,
+} from './capacity.js'
 import { createDatabase, USER_IDS, withImmediateTransaction } from './db.js'
 import type {
   ContentStatus,
@@ -81,6 +88,8 @@ interface BuildAppOptions {
   logger?: boolean
   serveStatic?: boolean
   sessionSecret?: string
+  capacityLimits?: Partial<CapacityLimits>
+  writeRateLimitMax?: number
 }
 
 interface IdempotentResult<T> {
@@ -157,8 +166,19 @@ export async function buildApp(
   options: BuildAppOptions = {},
 ): Promise<FastifyInstance> {
   const ownsDatabase = options.database === undefined
-  const database = options.database ?? createDatabase(options.databasePath)
-  const app = Fastify({ logger: options.logger ?? false })
+  const capacityLimits = resolveCapacityLimits(options.capacityLimits)
+  const database = options.database ?? createDatabase(options.databasePath, capacityLimits)
+  const capacityGuard = new CapacityGuard(database, capacityLimits)
+  const app = Fastify({
+    logger: options.logger ?? false,
+    trustProxy: ['127.0.0.1', '::1'],
+  })
+  const writeRateLimitMax = resolvePositiveInteger(
+    options.writeRateLimitMax,
+    process.env.REVIEWFLOW_WRITE_RATE_LIMIT,
+    30,
+    'REVIEWFLOW_WRITE_RATE_LIMIT',
+  )
   const configuredSessionSecret = options.sessionSecret ?? process.env.SESSION_SECRET
   if (!configuredSessionSecret && process.env.NODE_ENV === 'production') {
     throw new Error('SESSION_SECRET is required in production')
@@ -167,11 +187,47 @@ export async function buildApp(
     configuredSessionSecret ?? 'reviewflow-local-session-secret-change-me'
 
   await app.register(cookie, { secret: sessionSecret, hook: 'onRequest' })
+  await app.register(rateLimit, {
+    global: false,
+    errorResponseBuilder: (_request, context) => ({
+      statusCode: 429,
+      error: {
+        code: 'RATE_LIMITED',
+        message: `写入请求过于频繁，请在 ${context.after} 后重试`,
+      },
+    }),
+  })
+  const writeRouteOptions = {
+    onRequest: app.rateLimit({
+      max: writeRateLimitMax,
+      timeWindow: 60_000,
+    }),
+  }
 
   app.setErrorHandler((error, _request, reply) => {
     if (error instanceof ApiError) {
       return reply.status(error.statusCode).send({
         error: { code: error.code, message: error.message },
+      })
+    }
+    if (error instanceof CapacityLimitError) {
+      return reply.status(error.statusCode).send({
+        error: { code: error.code, message: error.message },
+      })
+    }
+    const rateLimitError = error as unknown as {
+      statusCode?: number
+      error?: { code?: string; message?: string }
+    }
+    if (
+      rateLimitError.statusCode === 429 &&
+      rateLimitError.error?.code === 'RATE_LIMITED'
+    ) {
+      return reply.status(429).send({
+        error: {
+          code: 'RATE_LIMITED',
+          message: rateLimitError.error.message ?? '写入请求过于频繁，请稍后重试',
+        },
       })
     }
     if (error instanceof ZodError) {
@@ -204,7 +260,7 @@ export async function buildApp(
     return listAdminUsers(database)
   })
 
-  app.post('/api/admin/users', (request, reply) => {
+  app.post('/api/admin/users', writeRouteOptions, (request, reply) => {
     const user = getCurrentUser(database, request)
     requireRole(user, 'ADMIN')
     const parsed = adminUserInputSchema.parse(request.body)
@@ -217,7 +273,9 @@ export async function buildApp(
       'CREATE_USER',
       key,
       input,
+      capacityGuard,
       () => {
+        capacityGuard.assertUserCapacity()
         ensureUserNameAvailable(database, input.name)
         const id = randomUUID()
         database
@@ -233,7 +291,7 @@ export async function buildApp(
     return sendIdempotent(reply, result)
   })
 
-  app.patch('/api/admin/users/:id', (request, reply) => {
+  app.patch('/api/admin/users/:id', writeRouteOptions, (request, reply) => {
     const user = getCurrentUser(database, request)
     requireRole(user, 'ADMIN')
     const { id } = idParamsSchema.parse(request.params)
@@ -247,6 +305,7 @@ export async function buildApp(
       `UPDATE_USER:${id}`,
       key,
       input,
+      capacityGuard,
       () => {
         const target = getUser(database, id)
         if (!target) throw new ApiError(404, 'USER_NOT_FOUND', '用户不存在')
@@ -267,7 +326,7 @@ export async function buildApp(
     return buildWorkspace(database, user)
   })
 
-  app.post('/api/session/switch', (request, reply) => {
+  app.post('/api/session/switch', writeRouteOptions, (request, reply) => {
     const input = switchUserSchema.parse(request.body)
     const user = getUser(database, input.userId)
     if (!user) throw new ApiError(404, 'USER_NOT_FOUND', '用户不存在')
@@ -293,7 +352,7 @@ export async function buildApp(
     return listContentSummaries(database, 'WHERE c.author_id = ?', [user.id])
   })
 
-  app.post('/api/contents', (request, reply) => {
+  app.post('/api/contents', writeRouteOptions, (request, reply) => {
     const user = getCurrentUser(database, request)
     requireRole(user, 'SUBMITTER')
     const input = contentInputSchema.parse(request.body)
@@ -305,7 +364,9 @@ export async function buildApp(
       'CREATE_CONTENT',
       key,
       input,
+      capacityGuard,
       () => {
+        capacityGuard.assertContentCapacity()
         const id = randomUUID()
         const now = new Date().toISOString()
         database
@@ -333,7 +394,7 @@ export async function buildApp(
     return getContentDetail(database, user, id).history
   })
 
-  app.patch('/api/contents/:id', (request, reply) => {
+  app.patch('/api/contents/:id', writeRouteOptions, (request, reply) => {
     const user = getCurrentUser(database, request)
     requireRole(user, 'SUBMITTER')
     const { id } = idParamsSchema.parse(request.params)
@@ -346,6 +407,7 @@ export async function buildApp(
       `EDIT_CONTENT:${id}`,
       key,
       input,
+      capacityGuard,
       () => {
         const content = requireContent(database, id)
         requireAuthor(user, content)
@@ -369,7 +431,7 @@ export async function buildApp(
     return sendIdempotent(reply, result)
   })
 
-  app.post('/api/contents/:id/submit', (request, reply) => {
+  app.post('/api/contents/:id/submit', writeRouteOptions, (request, reply) => {
     const user = getCurrentUser(database, request)
     requireRole(user, 'SUBMITTER')
     const { id } = idParamsSchema.parse(request.params)
@@ -382,6 +444,7 @@ export async function buildApp(
       `SUBMIT_CONTENT:${id}`,
       key,
       input,
+      capacityGuard,
       () => {
         const content = requireContent(database, id)
         requireAuthor(user, content)
@@ -391,6 +454,7 @@ export async function buildApp(
         if (content.version !== input.expectedVersion) {
           throw new ApiError(409, 'STALE_VERSION', '内容已更新，请刷新后重试')
         }
+        capacityGuard.assertRoundCapacity(id)
 
         const requiredApprovals = content.risk === 'LOW' ? 1 : 2
         const eligible = database
@@ -471,7 +535,7 @@ export async function buildApp(
     return listPendingContentSummaries(database, user.id)
   })
 
-  app.post('/api/review-rounds/:id/decisions', (request, reply) => {
+  app.post('/api/review-rounds/:id/decisions', writeRouteOptions, (request, reply) => {
     const user = getCurrentUser(database, request)
     requireRole(user, 'REVIEWER')
     const { id: roundId } = idParamsSchema.parse(request.params)
@@ -492,6 +556,7 @@ export async function buildApp(
       `REVIEW_DECISION:${roundId}`,
       key,
       { decision: input.decision, comment: normalizedComment },
+      capacityGuard,
       () => {
         const round = getRoundContext(database, roundId)
         if (!round) throw new ApiError(404, 'ROUND_NOT_FOUND', '审核轮次不存在')
@@ -602,15 +667,30 @@ function getFinalStatus(
   return countRow.count >= round.required_approvals ? 'APPROVED' : null
 }
 
+function resolvePositiveInteger(
+  override: number | undefined,
+  environmentValue: string | undefined,
+  fallback: number,
+  name: string,
+): number {
+  const value = override ?? (environmentValue === undefined ? fallback : Number(environmentValue))
+  if (!Number.isSafeInteger(value) || value <= 0) {
+    throw new Error(`${name} must be a positive integer`)
+  }
+  return value
+}
+
 function executeIdempotent<T>(
   database: DatabaseSync,
   actorId: string,
   operation: string,
   key: string,
   requestBody: unknown,
+  capacityGuard: CapacityGuard,
   action: () => { statusCode: number; body: T },
 ): IdempotentResult<T> {
   return withImmediateTransaction(database, () => {
+    capacityGuard.removeExpiredIdempotencyRecords()
     const requestHash = createHash('sha256')
       .update(JSON.stringify(requestBody))
       .digest('hex')
@@ -638,6 +718,8 @@ function executeIdempotent<T>(
         replayed: true,
       }
     }
+
+    capacityGuard.assertPersistentWriteAllowed()
 
     const result = action()
     database
