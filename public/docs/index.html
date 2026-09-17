@@ -29,6 +29,7 @@
           <a href="./design.html">系统设计</a>
           <a href="./edge-cases.html">边界与决策</a>
           <a href="./test-report.html">测试报告</a>
+          <a href="./concurrency-report.html">分布式与并发</a>
           <a href="./acceptance-report.html">验收报告</a>
           <a href="./operations.html">部署运行</a>
         </nav>
@@ -48,7 +49,7 @@
 
           <div class="metric-strip" aria-label="当前交付指标">
             <div class="metric"><strong>56</strong><span>固定演示内容</span></div>
-            <div class="metric"><strong>26/26</strong><span>自动化测试</span></div>
+            <div class="metric"><strong>40/40</strong><span>自动化测试</span></div>
             <div class="metric"><strong>0</strong><span>Lint 警告</span></div>
             <div class="metric"><strong>200</strong><span>线上健康状态</span></div>
           </div>
@@ -75,6 +76,12 @@
                 <p>自动化测试、构建、API 和多尺寸 PC 浏览器验证证据。</p>
                 <span class="card-link">查看测试结果 →</span>
               </a>
+              <a class="document-card" href="./concurrency-report.html">
+                <span class="status pass">9 / 9</span>
+                <strong>分布式与并发</strong>
+                <p>双 Node 进程、独立连接池、真实 PostgreSQL 行锁与终态竞争证据。</p>
+                <span class="card-link">查看并发矩阵 →</span>
+              </a>
               <a class="document-card" href="./acceptance-report.html">
                 <span class="status pass">ACCEPTED</span>
                 <strong>验收报告</strong>
@@ -99,9 +106,9 @@
                 <tbody>
                   <tr><td>Web</td><td>React 19、TypeScript、Vite，企业级三栏工作台、唯一请求清单与全生命周期详情</td><td><span class="status pass">PASS</span></td></tr>
                   <tr><td>API</td><td>Fastify、Zod、签名会话、服务端权限与 ADMIN 用户角色管理</td><td><span class="status pass">PASS</span></td></tr>
-                  <tr><td>数据</td><td>SQLite WAL、不可变快照、多轮审核、幂等记录</td><td><span class="status pass">PASS</span></td></tr>
-                  <tr><td>部署</td><td>CI 通过后自动发布、Node 单实例、systemd、Caddy 与健康失败回滚</td><td><span class="status pass">ONLINE</span></td></tr>
-                  <tr><td>扩展目标</td><td>多实例前迁移 PostgreSQL，并补齐确定性并发与故障注入</td><td><span class="status partial">PLANNED</span></td></tr>
+                  <tr><td>数据</td><td>PostgreSQL 16、不可变快照、多轮审核、行锁与幂等记录</td><td><span class="status pass">PASS</span></td></tr>
+                  <tr><td>部署</td><td>CI 通过后自动发布、release 前 pg_dump、migration、systemd 与 Caddy</td><td><span class="status pass">ONLINE</span></td></tr>
+                  <tr><td>扩展目标</td><td>数据库高可用、共享限流、负载测试和浏览器 E2E</td><td><span class="status partial">PLANNED</span></td></tr>
                 </tbody>
               </table>
             </div>

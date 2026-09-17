@@ -58,6 +58,7 @@ jobs:
             package-lock.json \
             dist \
             dist-server \
+            db \
             deploy/reviewflow.service
 
       - name: Configure SSH

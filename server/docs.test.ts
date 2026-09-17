@@ -41,8 +41,8 @@ describe('HTML documentation', () => {
   it('keeps the edge-case register complete and aligned with API errors', () => {
     const register = readFileSync(resolve(docsRoot, 'edge-cases.html'), 'utf8')
     const source = readFileSync(resolve(process.cwd(), 'server/app.ts'), 'utf8')
-    const capacitySource = readFileSync(
-      resolve(process.cwd(), 'server/capacity.ts'),
+    const storeSource = readFileSync(
+      resolve(process.cwd(), 'server/postgres/store.ts'),
       'utf8',
     )
     const ids = [...register.matchAll(/<td>((?:B|I|S|R|H|Q)-\d{2})<\/td>/g)].map(
@@ -55,12 +55,12 @@ describe('HTML documentation', () => {
       ...[...source.matchAll(/new ApiError\(\s*\d+,\s*'([A-Z_]+)'/g)].map(
         (match) => match[1],
       ),
-      ...[...capacitySource.matchAll(/readonly code = '([A-Z_]+)'/g)].map(
+      ...[...storeSource.matchAll(/new ApiError\(\s*\d+,\s*'([A-Z_]+)'/g)].map(
         (match) => match[1],
       ),
     ])
 
-    expect(ids).toHaveLength(93)
+    expect(ids).toHaveLength(94)
     expect(new Set(ids).size).toBe(ids.length)
     for (const errorCode of implementedErrors) {
       expect(register, `missing documented error: ${errorCode}`).toContain(
@@ -91,7 +91,7 @@ describe('HTML documentation', () => {
       expect(design, `missing design section: ${section}`).toContain(`id="${section}"`)
     }
     expect(design.match(/class="technical-diagram"/g)).toHaveLength(6)
-    expect(design.match(/class="schema-card"/g)).toHaveLength(7)
+    expect(design.match(/class="schema-card"/g)).toHaveLength(8)
     for (const table of [
       'users',
       'user_roles',
@@ -100,6 +100,7 @@ describe('HTML documentation', () => {
       'review_rounds',
       'review_decisions',
       'idempotency_requests',
+      'capacity_counters',
     ]) {
       expect(design, `missing schema table: ${table}`).toContain(`<strong>${table}</strong>`)
     }
@@ -111,7 +112,8 @@ describe('HTML documentation', () => {
       'IN_REVIEW',
       'APPROVED',
       'REJECTED',
-      'BEGIN IMMEDIATE',
+      'PostgreSQL',
+      'BEGIN',
       'SELECT * FROM contents',
       'FOR UPDATE',
     ]) {

@@ -20,6 +20,22 @@ jobs:
     name: Lint, test, and build
     runs-on: ubuntu-24.04
     timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: reviewflow_test
+          POSTGRES_USER: reviewflow
+          POSTGRES_PASSWORD: reviewflow-ci-password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U reviewflow -d reviewflow_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      TEST_DATABASE_URL: postgres://reviewflow:reviewflow-ci-password@127.0.0.1:5432/reviewflow_test
 
     steps:
       - name: Check out repository
@@ -42,6 +58,20 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     needs: check
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: reviewflow_container
+          POSTGRES_USER: reviewflow
+          POSTGRES_PASSWORD: reviewflow-ci-password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U reviewflow -d reviewflow_container"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
 
     steps:
       - name: Check out repository
@@ -54,7 +84,9 @@ jobs:
         run: |
           docker run --detach \
             --name reviewflow-ci \
-            --publish 127.0.0.1:3000:3000 \
+            --network host \
+            --env HOST=127.0.0.1 \
+            --env DATABASE_URL=postgres://reviewflow:reviewflow-ci-password@127.0.0.1:5432/reviewflow_container \
             --env SESSION_SECRET=ci-only-session-secret-at-least-32-bytes \
             reviewflow:ci
 

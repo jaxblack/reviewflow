@@ -1,17 +1,26 @@
 import { access, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
+import pg from 'pg'
 import { buildApp } from './app.ts'
 
-const databasePath = process.env.REVIEWFLOW_TEST_DATABASE
+const databaseUrl = process.env.TEST_DATABASE_URL
+const databaseSchema = process.env.REVIEWFLOW_TEST_SCHEMA
 const barrierDirectory = process.env.REVIEWFLOW_TEST_BARRIER_DIRECTORY
 const sessionSecret = process.env.REVIEWFLOW_TEST_SESSION_SECRET
 
-if (!databasePath || !barrierDirectory || !sessionSecret) {
+if (!databaseUrl || !databaseSchema || !barrierDirectory || !sessionSecret) {
   throw new Error('Missing concurrency worker configuration')
 }
 
+const pool = new pg.Pool({
+  connectionString: databaseUrl,
+  options: `-c search_path=${databaseSchema}`,
+  max: 10,
+})
+
 const app = await buildApp({
-  databasePath,
+  pool,
+  migrate: false,
   logger: false,
   sessionSecret,
   writeRateLimitMax: 100_000,
@@ -20,7 +29,7 @@ const app = await buildApp({
     if (typeof barrierId !== 'string' || !/^[a-f0-9-]{36}$/.test(barrierId)) return
 
     await writeFile(
-      join(barrierDirectory, `${barrierId}.${process.pid}.arrived`),
+      join(barrierDirectory, `${barrierId}.${process.pid}.${crypto.randomUUID()}.arrived`),
       '',
       'utf8',
     )
@@ -46,6 +55,7 @@ process.stdout.write(`READY ${address.port}\n`)
 for (const signal of ['SIGINT', 'SIGTERM']) {
   process.on(signal, async () => {
     await app.close()
+    await pool.end()
     process.exit(0)
   })
 }

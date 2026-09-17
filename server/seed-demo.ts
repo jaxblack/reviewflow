@@ -1,7 +1,9 @@
 import { fileURLToPath } from 'node:url'
 import { resolve } from 'node:path'
-import type { DatabaseSync } from 'node:sqlite'
-import { createDatabase, USER_IDS, withImmediateTransaction } from './db.js'
+import type { Pool } from 'pg'
+import { migratePostgres } from './postgres/migrate.js'
+import { createPostgresPool } from './postgres/pool.js'
+import { USER_IDS } from './postgres/store.js'
 import type { ContentStatus, DecisionType, Risk, RoundStatus } from './types.js'
 
 type Reviewer = 'bob' | 'chen'
@@ -240,78 +242,124 @@ function at(baseTime: number, hoursAgo: number): string {
   return new Date(baseTime - hoursAgo * 60 * 60 * 1000).toISOString()
 }
 
-export function seedDemoData(database: DatabaseSync, baseTime = Date.now()): {
+export async function seedDemoData(pool: Pool, baseTime = Date.now()): Promise<{
   insertedContents: number
   totalDemoContents: number
-} {
-  const insertContent = database.prepare(`
-    INSERT OR IGNORE INTO contents
-      (id, author_id, title, body, risk, status, version, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `)
-  const insertRevision = database.prepare(`
-    INSERT OR IGNORE INTO content_revisions
-      (id, content_id, revision_no, title, body, risk, author_id, author_name_snapshot, submitted_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `)
-  const insertRound = database.prepare(`
-    INSERT OR IGNORE INTO review_rounds
-      (id, content_id, revision_id, round_no, required_approvals, status, started_at, completed_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-  `)
-  const insertDecision = database.prepare(`
-    INSERT OR IGNORE INTO review_decisions
-      (id, round_id, reviewer_id, reviewer_name_snapshot, decision, comment, created_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
-  `)
-
+}> {
+  const client = await pool.connect()
   let insertedContents = 0
-  withImmediateTransaction(database, () => {
+  try {
+    await client.query('BEGIN')
     for (const content of fixtures) {
       const contentId = `demo-${content.slug}`
-      insertedContents += Number(insertContent.run(
-        contentId, USER_IDS.alice, content.title, content.body, content.risk,
-        content.status, content.version, at(baseTime, content.createdAgo),
+      const inserted = await client.query(`
+        INSERT INTO contents
+      (id, author_id, title, body, risk, status, version, created_at, updated_at)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+        ON CONFLICT (id) DO NOTHING
+        RETURNING id
+      `, [
+        contentId,
+        USER_IDS.alice,
+        content.title,
+        content.body,
+        content.risk,
+        content.status,
+        content.version,
+        at(baseTime, content.createdAgo),
         at(baseTime, content.updatedAgo),
-      ).changes)
+      ])
+      insertedContents += inserted.rowCount ?? 0
 
-      content.rounds.forEach((round, roundIndex) => {
+      for (const [roundIndex, round] of content.rounds.entries()) {
         const roundNo = roundIndex + 1
         const revisionId = `${contentId}-revision-${roundNo}`
         const roundId = `${contentId}-round-${roundNo}`
-        insertRevision.run(
-          revisionId, contentId, roundNo, round.title ?? content.title,
-          round.body ?? content.body, round.risk ?? content.risk, USER_IDS.alice,
-          'Alice', at(baseTime, round.startedAgo),
-        )
-        insertRound.run(
-          roundId, contentId, revisionId, roundNo, round.required, round.status,
+        await client.query(`
+          INSERT INTO content_revisions (
+            id, content_id, revision_no, title, body, risk,
+            author_id, author_name_snapshot, submitted_at
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+          ON CONFLICT (id) DO NOTHING
+        `, [
+          revisionId,
+          contentId,
+          roundNo,
+          round.title ?? content.title,
+          round.body ?? content.body,
+          round.risk ?? content.risk,
+          USER_IDS.alice,
+          'Alice',
+          at(baseTime, round.startedAgo),
+        ])
+        await client.query(`
+          INSERT INTO review_rounds (
+            id, content_id, revision_id, round_no, required_approvals,
+            status, started_at, completed_at
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+          ON CONFLICT (id) DO NOTHING
+        `, [
+          roundId,
+          contentId,
+          revisionId,
+          roundNo,
+          round.required,
+          round.status,
           at(baseTime, round.startedAgo),
           round.completedAgo === null ? null : at(baseTime, round.completedAgo),
-        )
-        round.decisions.forEach(([reviewer, value, comment, decidedAgo]) => {
-          insertDecision.run(
-            `${roundId}-decision-${reviewer}`, roundId, USER_IDS[reviewer],
-            reviewerNames[reviewer], value, comment, at(baseTime, decidedAgo),
-          )
-        })
-      })
+        ])
+        for (const [reviewer, value, comment, decidedAgo] of round.decisions) {
+          await client.query(`
+            INSERT INTO review_decisions (
+              id, round_id, reviewer_id, reviewer_name_snapshot,
+              decision, comment, created_at
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7)
+            ON CONFLICT (id) DO NOTHING
+          `, [
+            `${roundId}-decision-${reviewer}`,
+            roundId,
+            USER_IDS[reviewer],
+            reviewerNames[reviewer],
+            value,
+            comment,
+            at(baseTime, decidedAgo),
+          ])
+        }
+      }
     }
-  })
-
-  const result = database
-    .prepare("SELECT count(*) AS count FROM contents WHERE id LIKE 'demo-%'")
-    .get() as unknown as { count: number }
-  return { insertedContents, totalDemoContents: result.count }
+    await client.query(`
+      UPDATE capacity_counters counters
+      SET used = source.used
+      FROM (
+        SELECT 'users'::text AS resource, count(*)::bigint AS used FROM users
+        UNION ALL
+        SELECT 'contents', count(*)::bigint FROM contents
+        UNION ALL
+        SELECT 'idempotency', count(*)::bigint FROM idempotency_requests
+      ) source
+      WHERE counters.resource = source.resource
+    `)
+    const result = await client.query<{ count: number }>(`
+      SELECT count(*)::int AS count FROM contents WHERE id LIKE 'demo-%'
+    `)
+    await client.query('COMMIT')
+    return { insertedContents, totalDemoContents: result.rows[0].count }
+  } catch (error) {
+    await client.query('ROLLBACK')
+    throw error
+  } finally {
+    client.release()
+  }
 }
 
 const invokedPath = process.argv[1] ? resolve(process.argv[1]) : null
 if (invokedPath === fileURLToPath(import.meta.url)) {
-  const database = createDatabase()
+  const pool = createPostgresPool()
   try {
-    const result = seedDemoData(database)
+    await migratePostgres(pool)
+    const result = await seedDemoData(pool)
     console.log(`Demo data ready: ${result.totalDemoContents} contents (${result.insertedContents} inserted).`)
   } finally {
-    database.close()
+    await pool.end()
   }
 }

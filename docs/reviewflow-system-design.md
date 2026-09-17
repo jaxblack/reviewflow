@@ -1,6 +1,6 @@
 # ReviewFlow 内容审核系统设计方案
 
-> **文档定位**：本文描述面向 PostgreSQL、Kysely 和多实例生产化的完整目标设计。当前仓库交付的是 SQLite 单实例 MVP；已实现架构与差异见 [README](../README.md) 和 [当前实现架构](./architecture.md)。本文中的目标技术栈和测试门禁不能视为已经实现。
+> **文档定位**：本文描述关系模型、业务不变量和后续多实例生产化设计。当前仓库已经使用 PostgreSQL 16、原生 `pg`、行锁和事务级 advisory lock；Kysely、数据库高可用、共享限流及本文中尚未落地的门禁仍属于目标设计。已实现范围见 [README](../README.md) 和 [当前实现架构](./architecture.md)。
 
 ## 1. 文档信息
 
@@ -1020,7 +1020,7 @@ PC 左侧系统导航向 ADMIN 暴露“用户与权限”入口。侧滑管理�
 
 ### 11.2 PostgreSQL 集成测试
 
-必须使用 Testcontainers 启动真实 PostgreSQL，不能用 SQLite 代替，因为 SQLite 无法等价验证 PostgreSQL 的行锁、部分唯一索引和并发行为。
+必须使用真实 PostgreSQL，不能用其他数据库引擎代替，因为替代实现无法等价验证 PostgreSQL 的行锁、部分唯一索引和并发行为。当前仓库由 CI service 或显式 `TEST_DATABASE_URL` 提供数据库，后续可引入 Testcontainers 简化本地编排。
 
 重点场景：
 

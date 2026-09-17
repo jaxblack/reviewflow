@@ -29,6 +29,7 @@
           <a href="./design.html">系统设计</a>
           <a aria-current="page" href="./edge-cases.html">边界与决策</a>
           <a href="./test-report.html">测试报告</a>
+          <a href="./concurrency-report.html">分布式与并发</a>
           <a href="./acceptance-report.html">验收报告</a>
           <a href="./operations.html">部署运行</a>
         </nav>
@@ -47,7 +48,7 @@
           </header>
 
           <div class="metric-strip" aria-label="边界登记摘要">
-            <div class="metric"><strong>93</strong><span>边界案例</span></div>
+            <div class="metric"><strong>94</strong><span>边界案例</span></div>
             <div class="metric"><strong>20</strong><span>原始歧义决策</span></div>
             <div class="metric"><strong>14</strong><span>核心不变量</span></div>
             <div class="metric"><strong>12</strong><span>生产待确认项</span></div>
@@ -183,6 +184,7 @@
                   <tr><td>R-17</td><td>业务事务失败并回滚</td><td>幂等记录一起回滚，后续重试可重新执行。</td><td>无半成功状态</td></tr>
                   <tr><td>R-18</td><td>写请求缺少 key，或 key 长度不在 8–100 字符</td><td>业务事务开始前拒绝请求。</td><td>400 IDEMPOTENCY_KEY_REQUIRED</td></tr>
                   <tr><td>R-19</td><td>同一代理来源跨多个写接口持续请求</td><td>会话切换、内容和管理写接口共享每分钟额度。</td><td>429 RATE_LIMITED</td></tr>
+                  <tr><td>R-20</td><td>事务等待行锁或语句执行超过服务端时限</td><td>回滚当前事务并提示客户端刷新后重试。</td><td>409 CONCURRENT_UPDATE</td></tr>
                 </tbody>
               </table>
             </div>
@@ -223,14 +225,14 @@
                   <tr><td>Q-02</td><td>审核分配与负载</td><td>公共待审池，无负责人。</td><td>是否需要指派、抢单、转派、回避和负载均衡。</td></tr>
                   <tr><td>Q-03</td><td>盲审规则</td><td>审核人可见进度和历史。</td><td>是否隐藏其他审核人的决定，避免相互影响。</td></tr>
                   <tr><td>Q-04</td><td>重提条件</td><td>不要求实际修改。</td><td>是否要求字段变化、填写修订说明或回应拒绝理由。</td></tr>
-                  <tr><td>Q-05</td><td>幂等记录保留期</td><td>持续保存在数据库。</td><td>保留时长、清理任务和审计留存要求。</td></tr>
+                  <tr><td>Q-05</td><td>幂等记录保留期</td><td>保留 24 小时，后续写事务回收。</td><td>是否需要独立清理任务和更长审计留存。</td></tr>
                   <tr><td>Q-06</td><td>列表规模</td><td>MVP 返回完整结果并在前端筛选。</td><td>游标分页、服务端筛选、稳定排序和容量上限。</td></tr>
                   <tr><td>Q-07</td><td>真实身份系统</td><td>公开 Demo 使用预置用户切换。</td><td>接入组织身份、角色同步、会话失效和操作追责。</td></tr>
                   <tr><td>Q-08</td><td>通知和时限</td><td>不发送通知，不计算 SLA。</td><td>提醒、催办、超时升级、代理审核和节假日日历。</td></tr>
                   <tr><td>Q-09</td><td>删除、撤回、申诉</td><td>均不支持。</td><td>状态机、权限、审计、数据保留和恢复语义。</td></tr>
                   <tr><td>Q-10</td><td>富文本与附件</td><td>纯文本正文，无附件。</td><td>HTML 清洗、附件扫描、版本快照和下载授权。</td></tr>
-                  <tr><td>Q-11</td><td>多实例部署</td><td>SQLite WAL 单实例。</td><td>迁移 PostgreSQL、行锁、连接池和跨实例并发测试。</td></tr>
-                  <tr><td>Q-12</td><td>备份与恢复目标</td><td>发布前人工备份。</td><td>RPO、RTO、定时备份、加密、保留周期和恢复演练。</td></tr>
+                  <tr><td>Q-11</td><td>多实例部署</td><td>PostgreSQL 行锁和跨实例幂等已通过双进程测试；生产仍为单应用实例。</td><td>共享限流、数据库高可用、滚动发布和故障演练。</td></tr>
+                  <tr><td>Q-12</td><td>备份与恢复目标</td><td>每次 migration 前自动生成自定义格式 pg_dump。</td><td>RPO、RTO、异机定时备份、加密、保留周期和恢复演练。</td></tr>
                 </tbody>
               </table>
             </div>
@@ -262,6 +264,7 @@
                   <tr><td>409</td><td><code>USER_NAME_EXISTS</code></td><td>创建或改名时名称发生冲突</td></tr>
                   <tr><td>409</td><td><code>LAST_ADMIN_REQUIRED</code></td><td>尝试移除系统最后一位管理员</td></tr>
                   <tr><td>409</td><td><code>ROLE_CHANGE_WOULD_BLOCK_OPEN_ROUND</code></td><td>撤销角色会使开放轮次无法完成</td></tr>
+                  <tr><td>409</td><td><code>CONCURRENT_UPDATE</code></td><td>PostgreSQL 行锁等待或语句执行超时</td></tr>
                   <tr><td>429</td><td><code>RATE_LIMITED</code></td><td>同一来源一分钟内写入请求过多</td></tr>
                   <tr><td>422</td><td><code>REJECTION_REASON_REQUIRED</code></td><td>拒绝理由为空白</td></tr>
                   <tr><td>422</td><td><code>INSUFFICIENT_REVIEWERS</code></td><td>提交时合法审核人数不足</td></tr>

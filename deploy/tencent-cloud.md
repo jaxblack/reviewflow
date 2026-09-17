@@ -11,9 +11,11 @@
 ├── current -> releases/<release-id>
 ├── releases/<release-id>/
 └── shared/
-  ├── data/reviewflow.db
+  ├── backups/pre-release-<release-id>.dump
   └── reviewflow.env
 ```
+
+PostgreSQL 16 由服务器数据库服务独立管理，不位于应用 release 目录。
 
 服务定义见 `deploy/reviewflow.service`，Caddy 路由见 `deploy/Caddyfile.reviewflow`。应用只监听本机 `127.0.0.1:3000`，由 Caddy 将 `/reviewflow/*` 剥离为 `/*` 后转发。ReviewFlow 路径公开访问，不加入站点已有的 `basic_auth` matcher。
 
@@ -28,7 +30,7 @@ curl -I https://qlili.com/reviewflow/
 
 最后一条命令应返回 `200`。用户切换仅用于演示，任何访问者都可以修改演示数据，因此不得录入真实业务内容。
 
-生产会话密钥只存放在远端 `shared/reviewflow.env`，权限为 600，不进入仓库。用户切换是 Demo 登录替身，不代表真实认证系统。systemd 单元显式配置写入限流与容量上限；达到上限时应用拒绝写入，避免公开 Demo 持续增长 SQLite 并耗尽同机磁盘。
+数据库连接串和生产会话密钥只存放在远端 `shared/reviewflow.env`，权限为 600，不进入仓库。用户切换是 Demo 登录替身，不代表真实认证系统。systemd 单元显式配置写入限流与容量上限；达到上限时应用拒绝写入，限制公开 Demo 的数据库增长。
 
 ## GitHub Actions CI/CD
 
@@ -41,16 +43,18 @@ curl -I https://qlili.com/reviewflow/
 
 ### 1. 初始化服务器
 
-服务器需要安装 Node.js 22.5 或更高版本、npm、curl，并为部署用户启用 user systemd。目录和生产环境文件只需初始化一次：
+服务器需要安装 Node.js 22.5 或更高版本、npm、curl、PostgreSQL 16 客户端与可访问的 PostgreSQL 16 数据库，并为部署用户启用 user systemd。目录和生产环境文件只需初始化一次：
 
 ```bash
-mkdir -p ~/apps/reviewflow/{releases,shared/data}
+mkdir -p ~/apps/reviewflow/{releases,shared/backups}
 install -m 600 /dev/null ~/apps/reviewflow/shared/reviewflow.env
 secret=$(openssl rand -hex 32)
-printf 'SESSION_SECRET=%s\n' "$secret" \
+printf 'SESSION_SECRET=%s\nDATABASE_URL=REPLACE_WITH_POSTGRES_CONNECTION_STRING\n' "$secret" \
   > ~/apps/reviewflow/shared/reviewflow.env
 loginctl enable-linger "$USER"
 ```
+
+将 `REPLACE_WITH_POSTGRES_CONNECTION_STRING` 替换为应用账号的完整连接串，并保持文件权限为 600。应用账号需要目标 schema 的建表、迁移和读写权限；不得使用 PostgreSQL 超级用户运行应用。
 
 `loginctl enable-linger` 如果被系统策略限制，需要由服务器管理员执行。部署用户必须能使用 `systemctl --user`，但不需要 sudo 发布应用。
 
@@ -82,11 +86,11 @@ ssh-keyscan -H SERVER_IP > ./reviewflow-known-hosts
 | `PRODUCTION_SSH_PRIVATE_KEY` | `reviewflow-deploy` 私钥全文 |
 | `PRODUCTION_SSH_KNOWN_HOSTS` | 已核验的 `known_hosts` 内容 |
 
-`SESSION_SECRET`、数据库文件和 Caddy 配置不放入 GitHub Secrets，也不会被流水线覆盖。
+`SESSION_SECRET`、`DATABASE_URL` 和 Caddy 配置不放入 GitHub Secrets，也不会被流水线覆盖。
 
 ### 4. 发布与回滚
 
-合并到 `main` 后，CI 成功会自动触发 production deployment。流水线以 `<commit-sha>-<run-attempt>` 创建 release，安装锁定的生产依赖，向共享数据库幂等补齐缺失的 `demo-*` 固定数据，更新 systemd unit，原子切换 `current` 并检查本机健康端点。补种不会覆盖访问者已经修改的内容或自定义用户。
+合并到 `main` 后，CI 成功会自动触发 production deployment。流水线以 `<commit-sha>-<run-attempt>` 创建 release，安装锁定的生产依赖，先将 PostgreSQL 导出为 `shared/backups/pre-release-<release-id>.dump`，再执行版本化 migration 和幂等 seed，更新 systemd unit，原子切换 `current` 并检查本机健康端点。补种不会覆盖访问者已经修改的内容或自定义用户。
 
 自动发布只放宽人工审批，以下门禁仍然强制执行：
 
@@ -94,9 +98,9 @@ ssh-keyscan -H SERVER_IP > ./reviewflow-known-hosts
 - CD 再次校验事件必须来自当前仓库的 `main` push，成功的 fork 或 PR CI 无法取得生产 secrets。
 - `production` Environment 只允许 `main`，SSH 凭据只存为 Environment secrets。
 - 发布按单实例串行执行，不取消正在切换软链或重启 systemd 的任务。
-- 健康检查失败自动恢复上一 release；数据库和会话密钥不随 release 覆盖。
+- 健康检查失败自动恢复上一应用 release；数据库和会话密钥不随 release 覆盖。
 
-如果新版本在 20 秒内未通过健康检查，脚本会自动恢复之前的 `current` 并重启服务。若需要人工回滚，可在服务器执行：
+如果新版本在 20 秒内未通过健康检查，脚本会自动恢复之前的 `current` 并重启服务。该操作不会自动回滚已执行的数据库 migration；不兼容 schema 变更必须提供前向修复，或由运维人员在停写后使用对应的 pre-release dump 恢复。若只需人工回滚应用，可在服务器执行：
 
 ```bash
 previous=~/apps/reviewflow/releases/PREVIOUS_RELEASE_ID
@@ -112,12 +116,12 @@ curl --fail http://127.0.0.1:3000/api/health
 
 ## 适用范围
 
-当前 MVP 使用 SQLite 和本地持久化卷，部署约束如下：
+Compose 同时运行 ReviewFlow 和 PostgreSQL 16，部署约束如下：
 
 - 一台腾讯云 CVM 或轻量应用服务器。
-- 只运行一个 ReviewFlow 容器副本。
+- 默认运行一个 ReviewFlow 容器副本和一个 PostgreSQL 容器。
 - 建议 Ubuntu 24.04、Docker Engine 和 Docker Compose Plugin。
-- 若需要多实例或滚动发布，先迁移 PostgreSQL。
+- 若需要多实例或滚动发布，先补齐共享限流、数据库高可用和故障演练。
 - 用户切换是 Demo 登录替身，不能把站点无保护地暴露到公网。
 
 ## 1. 上传项目
@@ -157,7 +161,7 @@ curl http://127.0.0.1:3000/api/health
 健康响应应为：
 
 ```json
-{"status":"ok","database":"sqlite"}
+{"status":"ok","database":"postgresql"}
 ```
 
 ## 4. 配置入口
@@ -204,15 +208,12 @@ docker compose up -d --build
 
 ## 6. 备份
 
-先停止写入，再导出 Docker 卷：
+使用 PostgreSQL 自定义格式导出数据库：
 
 ```bash
-docker compose stop reviewflow
-docker run --rm \
-  -v reviewflow_reviewflow-data:/data \
-  -v "$PWD":/backup \
-  alpine tar czf /backup/reviewflow-data.tgz -C /data .
-docker compose start reviewflow
+docker compose exec -T postgres \
+  pg_dump -U reviewflow -d reviewflow --format=custom \
+  > "reviewflow-$(date +%Y%m%d-%H%M%S).dump"
 ```
 
-恢复前应先保留当前卷副本。生产长期运行时建议增加每日备份和保留策略。
+恢复前应停止应用写入并先保留当前数据库备份，再使用 `pg_restore` 恢复到空数据库。生产长期运行时应增加异机备份、保留策略和定期恢复演练；单独保存 Docker 数据卷不能替代逻辑备份。

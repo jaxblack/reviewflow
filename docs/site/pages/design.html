@@ -36,17 +36,17 @@
           <header class="page-header">
             <p class="kicker">Architecture / Domain / Data / Transactions</p>
             <h1>系统设计与实现规范</h1>
-            <p class="lead">从角色权限、状态机和不可变审核事实出发，完整描述 ReviewFlow 当前 SQLite 单实例实现，以及迁移到 PostgreSQL 多实例架构时必须保持的事务不变量。</p>
+            <p class="lead">从角色权限、状态机和不可变审核事实出发，完整描述 ReviewFlow 当前 PostgreSQL 16 实现、跨进程事务协议，以及后续高可用扩展必须保持的不变量。</p>
             <div class="page-meta">
               <span><strong>实现基线</strong> {{SITE_VERSION}}</span>
-              <span><strong>架构</strong> React + Fastify + SQLite</span>
+              <span><strong>架构</strong> React + Fastify + PostgreSQL</span>
               <span><strong>评审状态</strong> <span class="status pass">IMPLEMENTED</span></span>
             </div>
           </header>
 
           <div class="metric-strip" aria-label="系统规模">
             <div class="metric"><strong>14</strong><span>核心不变量</span></div>
-            <div class="metric"><strong>7</strong><span>关系数据表</span></div>
+            <div class="metric"><strong>8</strong><span>关系数据表</span></div>
             <div class="metric"><strong>4</strong><span>内容状态</span></div>
             <div class="metric"><strong>3</strong><span>叠加角色</span></div>
           </div>
@@ -67,12 +67,12 @@
           <section id="architecture" class="doc-section">
             <p class="eyebrow">01 / Context</p>
             <h2>系统边界与架构</h2>
-            <p>当前版本面向单机演示和内部流程验证。一个 Node.js 进程同时提供企业级三栏工作台、统一语义队列、全生命周期详情、ADMIN 用户角色管理与 Fastify API，SQLite 文件独立于 release 目录持久化。服务端会话是唯一可信身份来源。</p>
+            <p>当前生产由一个 Node.js 进程提供企业级三栏工作台、统一语义队列、全生命周期详情、ADMIN 用户角色管理与 Fastify API，并通过原生 <code>pg</code> 连接池访问 PostgreSQL 16。相同写协议已在两个独立应用进程下验证，服务端会话是唯一可信身份来源。</p>
             <figure class="diagram-frame">
               <figcaption>图 1：当前部署与应用分层</figcaption>
               <svg class="technical-diagram" viewBox="0 0 1080 330" role="img" aria-labelledby="architecture-title architecture-desc">
                 <title id="architecture-title">ReviewFlow 当前系统架构</title>
-                <desc id="architecture-desc">浏览器通过 HTTPS 访问 Caddy，Caddy 将 reviewflow 路径转发给 Fastify。Fastify 使用服务端会话、领域策略和事务服务访问 SQLite WAL 数据库。</desc>
+                <desc id="architecture-desc">浏览器通过 HTTPS 访问 Caddy，Caddy 将 reviewflow 路径转发给 Fastify。Fastify 使用服务端会话、领域策略和事务服务，通过连接池访问 PostgreSQL 16。</desc>
                 <defs><marker id="architecture-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#58706b" /></marker></defs>
                 <rect class="boundary" x="245" y="28" width="790" height="265" rx="12" />
                 <text class="diagram-copy" x="265" y="50">腾讯云单机信任边界</text>
@@ -89,11 +89,11 @@
                 <text class="diagram-copy" x="595" y="137" text-anchor="middle">Session / Zod API Contract</text>
                 <text class="diagram-copy" x="595" y="158" text-anchor="middle">Authorization / State Machine</text>
                 <text class="diagram-copy" x="595" y="179" text-anchor="middle">Idempotency / Capacity Guard</text>
-                <text class="diagram-copy" x="595" y="200" text-anchor="middle">BEGIN IMMEDIATE Transaction</text>
+                <text class="diagram-copy" x="595" y="200" text-anchor="middle">Row Locks / Advisory Locks</text>
                 <rect class="node" x="770" y="112" width="215" height="92" rx="8" />
-                <text class="diagram-title" x="877" y="143" text-anchor="middle">SQLite WAL</text>
-                <text class="diagram-copy" x="877" y="166" text-anchor="middle">7 张关系表 + 约束索引</text>
-                <text class="diagram-copy" x="877" y="184" text-anchor="middle">shared/data 持久化</text>
+                <text class="diagram-title" x="877" y="143" text-anchor="middle">PostgreSQL 16</text>
+                <text class="diagram-copy" x="877" y="166" text-anchor="middle">8 张关系表 + 约束索引</text>
+                <text class="diagram-copy" x="877" y="184" text-anchor="middle">独立数据库服务</text>
                 <line class="connector" x1="195" y1="158" x2="275" y2="158" marker-end="url(#architecture-arrow)" />
                 <text class="diagram-note" x="235" y="147" text-anchor="middle">HTTPS</text>
                 <line class="connector" x1="420" y1="158" x2="485" y2="158" marker-end="url(#architecture-arrow)" />
@@ -101,12 +101,12 @@
                 <line class="connector" x1="705" y1="158" x2="770" y2="158" marker-end="url(#architecture-arrow)" />
                 <text class="diagram-note" x="737" y="147" text-anchor="middle">同步事务</text>
                 <rect class="node-warning" x="485" y="260" width="500" height="45" rx="7" />
-                <text class="diagram-label" x="735" y="280" text-anchor="middle">单实例约束：扩容前必须迁移 PostgreSQL</text>
-                <text class="diagram-copy" x="735" y="296" text-anchor="middle">行锁替代 SQLite 全局写锁，保持相同领域不变量</text>
+                <text class="diagram-label" x="735" y="280" text-anchor="middle">当前生产为单应用实例；双进程事务已验证</text>
+                <text class="diagram-copy" x="735" y="296" text-anchor="middle">扩容前补齐共享限流、滚动发布和数据库高可用</text>
               </svg>
             </figure>
             <div class="diagram-legend"><span><i class="legend-swatch accent"></i>核心事务边界</span><span><i class="legend-swatch"></i>基础设施或客户端</span><span><i class="legend-swatch warning"></i>容量与演进约束</span></div>
-            <div class="callout warning"><strong>部署约束：</strong>SQLite 版本只能运行一个应用实例。需要多实例、滚动发布或更高并发时，先迁移 PostgreSQL 并用行锁协调审核终态。</div>
+            <div class="callout warning"><strong>部署约束：</strong>行锁与事务级 advisory lock 已保证共享单主库时的业务一致性；当前 IP 限流仍在进程内，生产也尚未部署数据库主从切换，因此不能把双进程测试等同于完整高可用。</div>
           </section>
 
           <section id="roles" class="doc-section">
@@ -229,13 +229,13 @@
 
           <section id="database-schema" class="doc-section">
             <p class="eyebrow">04 / Physical data model</p>
-            <h2>当前 SQLite 数据库表结构</h2>
-            <p>以下列结构直接对应 <code>server/db.ts</code> 的生产 schema。SQLite 使用 TEXT 保存 UUID 风格 ID 和 ISO-8601 时间；所有外键开启 <code>ON DELETE RESTRICT</code>，避免审计主体被级联删除。</p>
+            <h2>当前 PostgreSQL 数据库表结构</h2>
+            <p>以下列结构直接对应 <code>db/migrations/001_initial.sql</code>。业务 ID 使用 text，时间使用 <code>timestamptz</code>，幂等响应使用 <code>jsonb</code>；所有审计主体外键采用 <code>ON DELETE RESTRICT</code>。</p>
             <div class="schema-grid">
               <section class="schema-card">
                 <header><strong>users</strong><span>身份主体</span></header>
                 <div class="table-wrap"><table><thead><tr><th>列</th><th>类型</th><th>约束 / 说明</th></tr></thead><tbody>
-                  <tr><td><code>id</code></td><td>TEXT</td><td>PK</td></tr><tr><td><code>display_name</code></td><td>TEXT</td><td>NOT NULL；trim 后非空；NOCASE 唯一索引</td></tr><tr><td><code>created_at</code></td><td>TEXT</td><td>NOT NULL；ISO 时间</td></tr>
+                  <tr><td><code>id</code></td><td>TEXT</td><td>PK</td></tr><tr><td><code>display_name</code></td><td>VARCHAR(80)</td><td>NOT NULL；trim 后非空；lower 表达式唯一索引</td></tr><tr><td><code>created_at</code></td><td>TIMESTAMPTZ</td><td>NOT NULL；默认 now()</td></tr>
                 </tbody></table></div>
               </section>
               <section class="schema-card">
@@ -247,38 +247,44 @@
               <section class="schema-card">
                 <header><strong>contents</strong><span>可编辑聚合根</span></header>
                 <div class="table-wrap"><table><thead><tr><th>列</th><th>类型</th><th>约束 / 说明</th></tr></thead><tbody>
-                  <tr><td><code>id</code></td><td>TEXT</td><td>PK</td></tr><tr><td><code>author_id</code></td><td>TEXT</td><td>FK → users.id</td></tr><tr><td><code>title</code></td><td>TEXT</td><td>非空；API 最大 200</td></tr><tr><td><code>body</code></td><td>TEXT</td><td>非空；API 最大 50,000</td></tr><tr><td><code>risk</code></td><td>TEXT</td><td>LOW / HIGH</td></tr><tr><td><code>status</code></td><td>TEXT</td><td>DRAFT / IN_REVIEW / APPROVED / REJECTED</td></tr><tr><td><code>version</code></td><td>INTEGER</td><td>正整数；乐观并发控制</td></tr><tr><td><code>created_at</code></td><td>TEXT</td><td>创建时间</td></tr><tr><td><code>updated_at</code></td><td>TEXT</td><td>最新业务变更时间</td></tr>
+                  <tr><td><code>id</code></td><td>TEXT</td><td>PK</td></tr><tr><td><code>author_id</code></td><td>TEXT</td><td>FK → users.id</td></tr><tr><td><code>title</code></td><td>VARCHAR(200)</td><td>trim 后非空</td></tr><tr><td><code>body</code></td><td>TEXT</td><td>trim 后非空；最大 50,000</td></tr><tr><td><code>risk</code></td><td>TEXT</td><td>LOW / HIGH CHECK</td></tr><tr><td><code>status</code></td><td>TEXT</td><td>四状态 CHECK</td></tr><tr><td><code>version</code></td><td>BIGINT</td><td>正整数；乐观并发控制</td></tr><tr><td><code>created_at</code></td><td>TIMESTAMPTZ</td><td>创建时间</td></tr><tr><td><code>updated_at</code></td><td>TIMESTAMPTZ</td><td>不得早于创建时间</td></tr>
                 </tbody></table></div>
               </section>
               <section class="schema-card">
                 <header><strong>content_revisions</strong><span>不可变提交快照</span></header>
                 <div class="table-wrap"><table><thead><tr><th>列</th><th>类型</th><th>约束 / 说明</th></tr></thead><tbody>
-                  <tr><td><code>id</code></td><td>TEXT</td><td>PK</td></tr><tr><td><code>content_id</code></td><td>TEXT</td><td>FK → contents.id</td></tr><tr><td><code>revision_no</code></td><td>INTEGER</td><td>正整数；与 content_id 联合唯一</td></tr><tr><td><code>title / body / risk</code></td><td>TEXT</td><td>提交时内容快照</td></tr><tr><td><code>author_id</code></td><td>TEXT</td><td>FK → users.id</td></tr><tr><td><code>author_name_snapshot</code></td><td>TEXT</td><td>提交时作者显示名</td></tr><tr><td><code>submitted_at</code></td><td>TEXT</td><td>提交时间</td></tr>
+                  <tr><td><code>id</code></td><td>TEXT</td><td>PK</td></tr><tr><td><code>content_id</code></td><td>TEXT</td><td>FK → contents.id</td></tr><tr><td><code>revision_no</code></td><td>INTEGER</td><td>正整数；与 content_id 联合唯一</td></tr><tr><td><code>title / body / risk</code></td><td>VARCHAR / TEXT</td><td>提交时内容快照</td></tr><tr><td><code>author_id</code></td><td>TEXT</td><td>FK → users.id</td></tr><tr><td><code>author_name_snapshot</code></td><td>VARCHAR(80)</td><td>提交时作者显示名</td></tr><tr><td><code>submitted_at</code></td><td>TIMESTAMPTZ</td><td>提交时间</td></tr>
                 </tbody></table></div>
               </section>
               <section class="schema-card">
                 <header><strong>review_rounds</strong><span>审核轮次</span></header>
                 <div class="table-wrap"><table><thead><tr><th>列</th><th>类型</th><th>约束 / 说明</th></tr></thead><tbody>
-                  <tr><td><code>id</code></td><td>TEXT</td><td>PK</td></tr><tr><td><code>content_id</code></td><td>TEXT</td><td>FK → contents.id</td></tr><tr><td><code>revision_id</code></td><td>TEXT</td><td>UNIQUE；复合 FK 保证属于同一内容</td></tr><tr><td><code>round_no</code></td><td>INTEGER</td><td>正整数；与 content_id 联合唯一</td></tr><tr><td><code>required_approvals</code></td><td>INTEGER</td><td>仅 1 或 2；提交时冻结</td></tr><tr><td><code>status</code></td><td>TEXT</td><td>OPEN / APPROVED / REJECTED</td></tr><tr><td><code>started_at</code></td><td>TEXT</td><td>轮次开始时间</td></tr><tr><td><code>completed_at</code></td><td>TEXT?</td><td>OPEN 必须为空；终态必须非空</td></tr>
+                  <tr><td><code>id</code></td><td>TEXT</td><td>PK</td></tr><tr><td><code>content_id</code></td><td>TEXT</td><td>FK → contents.id</td></tr><tr><td><code>revision_id</code></td><td>TEXT</td><td>UNIQUE；复合 FK 保证属于同一内容</td></tr><tr><td><code>round_no</code></td><td>INTEGER</td><td>正整数；与 content_id 联合唯一</td></tr><tr><td><code>required_approvals</code></td><td>SMALLINT</td><td>仅 1 或 2；提交时冻结</td></tr><tr><td><code>status</code></td><td>TEXT</td><td>OPEN / APPROVED / REJECTED</td></tr><tr><td><code>started_at</code></td><td>TIMESTAMPTZ</td><td>轮次开始时间</td></tr><tr><td><code>completed_at</code></td><td>TIMESTAMPTZ?</td><td>OPEN 必须为空；终态必须非空</td></tr>
                 </tbody></table></div>
               </section>
               <section class="schema-card">
                 <header><strong>review_decisions</strong><span>追加式审核事实</span></header>
                 <div class="table-wrap"><table><thead><tr><th>列</th><th>类型</th><th>约束 / 说明</th></tr></thead><tbody>
-                  <tr><td><code>id</code></td><td>TEXT</td><td>PK</td></tr><tr><td><code>round_id</code></td><td>TEXT</td><td>FK → review_rounds.id</td></tr><tr><td><code>reviewer_id</code></td><td>TEXT</td><td>FK → users.id；与 round_id 联合唯一</td></tr><tr><td><code>reviewer_name_snapshot</code></td><td>TEXT</td><td>决定发生时审核人名称</td></tr><tr><td><code>decision</code></td><td>TEXT</td><td>APPROVE / REJECT</td></tr><tr><td><code>comment</code></td><td>TEXT?</td><td>REJECT 时 trim 后必须非空</td></tr><tr><td><code>created_at</code></td><td>TEXT</td><td>决定时间</td></tr>
+                  <tr><td><code>id</code></td><td>TEXT</td><td>PK</td></tr><tr><td><code>round_id</code></td><td>TEXT</td><td>FK → review_rounds.id</td></tr><tr><td><code>reviewer_id</code></td><td>TEXT</td><td>FK → users.id；与 round_id 联合唯一</td></tr><tr><td><code>reviewer_name_snapshot</code></td><td>VARCHAR(80)</td><td>决定发生时审核人名称</td></tr><tr><td><code>decision</code></td><td>TEXT</td><td>APPROVE / REJECT</td></tr><tr><td><code>comment</code></td><td>VARCHAR(2000)?</td><td>REJECT 时 trim 后必须非空</td></tr><tr><td><code>created_at</code></td><td>TIMESTAMPTZ</td><td>决定时间</td></tr>
                 </tbody></table></div>
               </section>
               <section class="schema-card">
                 <header><strong>idempotency_requests</strong><span>请求重放事实</span></header>
                 <div class="table-wrap"><table><thead><tr><th>列</th><th>类型</th><th>约束 / 说明</th></tr></thead><tbody>
-                  <tr><td><code>actor_id</code></td><td>TEXT</td><td>复合 PK + FK → users.id</td></tr><tr><td><code>operation</code></td><td>TEXT</td><td>复合 PK；包含资源作用域</td></tr><tr><td><code>idempotency_key</code></td><td>TEXT</td><td>复合 PK；API 长度 8–100</td></tr><tr><td><code>request_hash</code></td><td>TEXT</td><td>规范化请求体 SHA-256</td></tr><tr><td><code>status_code</code></td><td>INTEGER</td><td>第一次成功响应状态</td></tr><tr><td><code>response_body</code></td><td>TEXT</td><td>第一次成功响应 JSON</td></tr><tr><td><code>created_at</code></td><td>TEXT</td><td>24 小时回收窗口</td></tr>
+                  <tr><td><code>actor_id</code></td><td>TEXT</td><td>复合 PK + FK → users.id</td></tr><tr><td><code>operation</code></td><td>VARCHAR(160)</td><td>复合 PK；包含资源作用域</td></tr><tr><td><code>idempotency_key</code></td><td>VARCHAR(100)</td><td>复合 PK；API 长度 8–100</td></tr><tr><td><code>request_hash</code></td><td>CHAR(64)</td><td>规范化请求体 SHA-256</td></tr><tr><td><code>status_code</code></td><td>INTEGER</td><td>第一次成功响应状态</td></tr><tr><td><code>response_body</code></td><td>JSONB</td><td>第一次成功响应</td></tr><tr><td><code>created_at</code></td><td>TIMESTAMPTZ</td><td>24 小时回收窗口</td></tr>
+                </tbody></table></div>
+              </section>
+              <section class="schema-card">
+                <header><strong>capacity_counters</strong><span>事务容量计数</span></header>
+                <div class="table-wrap"><table><thead><tr><th>列</th><th>类型</th><th>约束 / 说明</th></tr></thead><tbody>
+                  <tr><td><code>resource</code></td><td>TEXT</td><td>PK；users / contents / idempotency</td></tr><tr><td><code>used</code></td><td>BIGINT</td><td>非负；与业务写入同事务更新</td></tr>
                 </tbody></table></div>
               </section>
             </div>
             <h3>关键索引与约束</h3>
             <div class="table-wrap">
               <table><thead><tr><th>名称 / 形式</th><th>作用</th><th>阻止的问题</th></tr></thead><tbody>
-                <tr><td><code>users_display_name_unique</code></td><td>显示名 NOCASE 唯一</td><td>用户切换入口出现同名歧义</td></tr>
+                <tr><td><code>users_display_name_unique</code></td><td><code>lower(display_name)</code> 唯一</td><td>用户切换入口出现同名歧义</td></tr>
                 <tr><td><code>UNIQUE(content_id, revision_no)</code></td><td>每内容 revision 序号唯一</td><td>并发提交产生重复版本号</td></tr>
                 <tr><td><code>review_rounds_one_open_per_content</code></td><td>部分唯一索引：status=OPEN</td><td>同一内容同时存在两个开放轮次</td></tr>
                 <tr><td><code>UNIQUE(round_id, reviewer_id)</code></td><td>审核人每轮一次</td><td>重复点击、新 key 或并发双写重复计票</td></tr>
@@ -335,22 +341,22 @@
               <figcaption>图 4：DRAFT / REJECTED 提交并创建新审核轮次</figcaption>
               <svg class="technical-diagram" viewBox="0 0 1140 650" role="img" aria-labelledby="submit-title submit-desc">
                 <title id="submit-title">内容提交事务时序图</title>
-                <desc id="submit-desc">作者从 Web 提交内容。API 从会话恢复身份，开启 SQLite 即时事务，检查幂等、作者、状态、版本和审核人数，创建快照与轮次并更新内容，最后提交事务返回进度。</desc>
+                <desc id="submit-desc">作者从 Web 提交内容。API 从会话恢复身份，开启 PostgreSQL 事务并锁定幂等 key 与内容行，检查作者、状态、版本和审核人数，创建快照与轮次并更新内容，最后提交事务返回进度。</desc>
                 <defs><marker id="submit-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" fill="#58706b" /></marker></defs>
                 <rect class="node" x="20" y="20" width="150" height="50" rx="7" /><text class="diagram-label" x="95" y="50" text-anchor="middle">作者</text>
                 <rect class="node" x="220" y="20" width="150" height="50" rx="7" /><text class="diagram-label" x="295" y="50" text-anchor="middle">React Web</text>
                 <rect class="node-accent" x="445" y="20" width="150" height="50" rx="7" /><text class="diagram-label" x="520" y="50" text-anchor="middle">Fastify API</text>
                 <rect class="node" x="665" y="20" width="150" height="50" rx="7" /><text class="diagram-label" x="740" y="50" text-anchor="middle">CurrentUser</text>
-                <rect class="node-accent" x="895" y="20" width="150" height="50" rx="7" /><text class="diagram-label" x="970" y="50" text-anchor="middle">SQLite</text>
+                <rect class="node-accent" x="895" y="20" width="150" height="50" rx="7" /><text class="diagram-label" x="970" y="50" text-anchor="middle">PostgreSQL</text>
                 <line class="lifeline" x1="95" y1="70" x2="95" y2="625" /><line class="lifeline" x1="295" y1="70" x2="295" y2="625" /><line class="lifeline" x1="520" y1="70" x2="520" y2="625" /><line class="lifeline" x1="740" y1="70" x2="740" y2="625" /><line class="lifeline" x1="970" y1="70" x2="970" y2="625" />
                 <rect class="activation" x="513" y="145" width="14" height="440" /><rect class="activation" x="963" y="270" width="14" height="270" />
                 <line class="message" x1="95" y1="105" x2="295" y2="105" marker-end="url(#submit-arrow)" /><text class="diagram-copy" x="195" y="96" text-anchor="middle">1. 点击“提交审核”</text>
                 <line class="message" x1="295" y1="150" x2="520" y2="150" marker-end="url(#submit-arrow)" /><text class="diagram-copy" x="407" y="141" text-anchor="middle">2. POST /contents/:id/submit</text><text class="diagram-note" x="407" y="164" text-anchor="middle">Idempotency-Key + expectedVersion</text>
                 <line class="message" x1="520" y1="200" x2="740" y2="200" marker-end="url(#submit-arrow)" /><text class="diagram-copy" x="630" y="191" text-anchor="middle">3. getCurrentUser(signed cookie)</text>
                 <line class="message response" x1="740" y1="235" x2="520" y2="235" marker-end="url(#submit-arrow)" /><text class="diagram-note" x="630" y="226" text-anchor="middle">user + current roles</text>
-                <line class="message" x1="520" y1="275" x2="970" y2="275" marker-end="url(#submit-arrow)" /><text class="diagram-copy" x="745" y="266" text-anchor="middle">4. BEGIN IMMEDIATE</text>
+                <line class="message" x1="520" y1="275" x2="970" y2="275" marker-end="url(#submit-arrow)" /><text class="diagram-copy" x="745" y="266" text-anchor="middle">4. BEGIN + advisory lock</text>
                 <line class="message" x1="520" y1="320" x2="970" y2="320" marker-end="url(#submit-arrow)" /><text class="diagram-copy" x="745" y="311" text-anchor="middle">5. 清理过期幂等记录；查询 replay</text>
-                <line class="message" x1="520" y1="365" x2="970" y2="365" marker-end="url(#submit-arrow)" /><text class="diagram-copy" x="745" y="356" text-anchor="middle">6. 校验作者、DRAFT/REJECTED、version</text>
+                <line class="message" x1="520" y1="365" x2="970" y2="365" marker-end="url(#submit-arrow)" /><text class="diagram-copy" x="745" y="356" text-anchor="middle">6. FOR UPDATE content；校验状态和 version</text>
                 <line class="message" x1="520" y1="410" x2="970" y2="410" marker-end="url(#submit-arrow)" /><text class="diagram-copy" x="745" y="401" text-anchor="middle">7. 校验容量与合法 REVIEWER 数量</text>
                 <line class="message" x1="520" y1="455" x2="970" y2="455" marker-end="url(#submit-arrow)" /><text class="diagram-copy" x="745" y="446" text-anchor="middle">8. INSERT revision + review_round</text>
                 <line class="message" x1="520" y1="500" x2="970" y2="500" marker-end="url(#submit-arrow)" /><text class="diagram-copy" x="745" y="491" text-anchor="middle">9. UPDATE content=IN_REVIEW；保存响应</text>
@@ -383,13 +389,13 @@
                 <rect class="node" x="35" y="20" width="170" height="50" rx="7" /><text class="diagram-label" x="120" y="50" text-anchor="middle">REVIEWER</text>
                 <rect class="node" x="285" y="20" width="170" height="50" rx="7" /><text class="diagram-label" x="370" y="50" text-anchor="middle">React Web</text>
                 <rect class="node-accent" x="535" y="20" width="170" height="50" rx="7" /><text class="diagram-label" x="620" y="50" text-anchor="middle">Review API</text>
-                <rect class="node-accent" x="880" y="20" width="190" height="50" rx="7" /><text class="diagram-label" x="975" y="50" text-anchor="middle">SQLite</text>
+                <rect class="node-accent" x="880" y="20" width="190" height="50" rx="7" /><text class="diagram-label" x="975" y="50" text-anchor="middle">PostgreSQL</text>
                 <line class="lifeline" x1="120" y1="70" x2="120" y2="650" /><line class="lifeline" x1="370" y1="70" x2="370" y2="650" /><line class="lifeline" x1="620" y1="70" x2="620" y2="650" /><line class="lifeline" x1="975" y1="70" x2="975" y2="650" />
                 <rect class="activation" x="613" y="145" width="14" height="455" /><rect class="activation" x="968" y="195" width="14" height="365" />
                 <line class="message" x1="120" y1="105" x2="370" y2="105" marker-end="url(#review-arrow)" /><text class="diagram-copy" x="245" y="96" text-anchor="middle">1. 通过 / 拒绝（拒绝含理由）</text>
                 <line class="message" x1="370" y1="150" x2="620" y2="150" marker-end="url(#review-arrow)" /><text class="diagram-copy" x="495" y="141" text-anchor="middle">2. POST /review-rounds/:id/decisions</text>
-                <line class="message" x1="620" y1="200" x2="975" y2="200" marker-end="url(#review-arrow)" /><text class="diagram-copy" x="797" y="191" text-anchor="middle">3. BEGIN IMMEDIATE + 幂等重放检查</text>
-                <line class="message" x1="620" y1="250" x2="975" y2="250" marker-end="url(#review-arrow)" /><text class="diagram-copy" x="797" y="241" text-anchor="middle">4. 查询 round + content + previous decision</text>
+                <line class="message" x1="620" y1="200" x2="975" y2="200" marker-end="url(#review-arrow)" /><text class="diagram-copy" x="797" y="191" text-anchor="middle">3. BEGIN + advisory lock + replay 检查</text>
+                <line class="message" x1="620" y1="250" x2="975" y2="250" marker-end="url(#review-arrow)" /><text class="diagram-copy" x="797" y="241" text-anchor="middle">4. FOR UPDATE content → round；查询决定</text>
                 <rect class="phase" x="650" y="275" width="395" height="70" rx="7" />
                 <text class="diagram-label" x="847" y="298" text-anchor="middle">事务内校验</text><text class="diagram-copy" x="847" y="320" text-anchor="middle">REVIEWER · 非作者 · 未冲突决定 · OPEN · IN_REVIEW</text><text class="diagram-note" x="847" y="337" text-anchor="middle">任一失败：ROLLBACK，不写 decision</text>
                 <line class="message" x1="620" y1="375" x2="975" y2="375" marker-end="url(#review-arrow)" /><text class="diagram-copy" x="797" y="366" text-anchor="middle">5. INSERT review_decision</text>
@@ -443,8 +449,8 @@
                 <tr><td>React</td><td>隐藏或禁用不可用操作；展示 capability</td><td>不能作为权限边界</td></tr>
                 <tr><td>Zod</td><td>严格 DTO、枚举、长度、未知字段拒绝</td><td>不能决定资源关系和当前状态</td></tr>
                 <tr><td>领域服务</td><td>角色、作者、状态、版本、阈值、可见性</td><td>不能替代数据库唯一性和原子性</td></tr>
-                <tr><td>SQLite</td><td>FK、CHECK、UNIQUE、部分索引、同步事务</td><td>不能识别完整产品语义</td></tr>
-                <tr><td>容量守卫</td><td>IP 限流、记录配额、SQLite 页数上限</td><td>不能替代真实身份认证</td></tr>
+                <tr><td>PostgreSQL</td><td>FK、CHECK、UNIQUE、部分索引、行锁与原子事务</td><td>不能识别完整产品语义</td></tr>
+                <tr><td>容量守卫</td><td>IP 限流、事务容量计数与记录配额</td><td>不能替代真实身份认证</td></tr>
               </tbody></table>
             </div>
           </section>
@@ -452,32 +458,35 @@
           <section id="concurrency" class="doc-section">
             <p class="eyebrow">09 / Concurrency and idempotency</p>
             <h2>事务、并发与幂等</h2>
-            <p>所有写命令通过 <code>BEGIN IMMEDIATE</code> 获得 SQLite 写锁。审核决定、轮次终态、内容状态、聚合版本和幂等响应在同一事务中提交或回滚。</p>
+            <p>所有写命令使用 PostgreSQL <code>READ COMMITTED</code> 事务，并设置 5 秒锁超时和 15 秒语句超时。内容聚合按 content → current round 的固定顺序加行锁；审核决定、轮次终态、内容状态、聚合版本和幂等响应在同一事务中提交或回滚。</p>
             <pre>currentUser = getCurrentUser(request)
-BEGIN IMMEDIATE
+BEGIN
+  pg_advisory_xact_lock(actor + operation + key)
   claimOrReplayIdempotencyKey(currentUser, operation, key)
+  SELECT content FOR UPDATE
+  SELECT currentRound FOR UPDATE
   validateRoleAuthorStateAndVersion()
   appendRevisionRoundOrDecision()
   updateAggregateAndRoundAtomically()
   saveIdempotentResponse()
 COMMIT</pre>
-            <div class="callout success"><strong>终态竞争：</strong>通过与拒绝同时到达时，SQLite 串行化写事务。先提交者形成唯一终态，后续请求读取到已关闭轮次并返回冲突，不写入失败方决定。</div>
+            <div class="callout success"><strong>终态竞争：</strong>通过与拒绝同时到达时，两个事务竞争同一 content 行锁。胜者形成唯一终态，等待者获得锁后重新读取已关闭轮次并返回冲突，不写入失败方决定。</div>
             <figure class="diagram-frame">
               <figcaption>图 6：LOW 终审通过与拒绝并发竞争</figcaption>
               <svg class="technical-diagram" viewBox="0 0 1140 570" role="img" aria-labelledby="race-title race-desc">
                 <title id="race-title">终态竞争时序图</title>
-                <desc id="race-desc">Bob 的通过请求先获得 SQLite 写锁，Chen 的拒绝请求等待。Bob 提交已通过终态后，Chen 获得锁并看到轮次已经关闭，因此返回冲突且不写入拒绝决定。</desc>
+                <desc id="race-desc">Bob 的通过请求先锁定内容行，Chen 的拒绝请求等待同一行。Bob 提交已通过终态后，Chen 获得锁并看到轮次已经关闭，因此返回冲突且不写入拒绝决定。</desc>
                 <defs><marker id="race-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" fill="#58706b" /></marker></defs>
                 <rect class="node" x="20" y="20" width="150" height="50" rx="7" /><text class="diagram-label" x="95" y="50" text-anchor="middle">Bob</text>
                 <rect class="node" x="230" y="20" width="160" height="50" rx="7" /><text class="diagram-label" x="310" y="50" text-anchor="middle">API / Tx A</text>
-                <rect class="node-accent" x="490" y="20" width="160" height="50" rx="7" /><text class="diagram-label" x="570" y="50" text-anchor="middle">SQLite</text>
+                <rect class="node-accent" x="490" y="20" width="160" height="50" rx="7" /><text class="diagram-label" x="570" y="50" text-anchor="middle">PostgreSQL</text>
                 <rect class="node" x="750" y="20" width="160" height="50" rx="7" /><text class="diagram-label" x="830" y="50" text-anchor="middle">API / Tx B</text>
                 <rect class="node" x="970" y="20" width="150" height="50" rx="7" /><text class="diagram-label" x="1045" y="50" text-anchor="middle">Chen</text>
                 <line class="lifeline" x1="95" y1="70" x2="95" y2="540" /><line class="lifeline" x1="310" y1="70" x2="310" y2="540" /><line class="lifeline" x1="570" y1="70" x2="570" y2="540" /><line class="lifeline" x1="830" y1="70" x2="830" y2="540" /><line class="lifeline" x1="1045" y1="70" x2="1045" y2="540" />
                 <line class="message" x1="95" y1="110" x2="310" y2="110" marker-end="url(#race-arrow)" /><text class="diagram-copy" x="202" y="101" text-anchor="middle">APPROVE</text>
                 <line class="message" x1="1045" y1="145" x2="830" y2="145" marker-end="url(#race-arrow)" /><text class="diagram-copy" x="937" y="136" text-anchor="middle">REJECT("原因")</text>
-                <line class="message" x1="310" y1="190" x2="570" y2="190" marker-end="url(#race-arrow)" /><text class="diagram-copy" x="440" y="181" text-anchor="middle">BEGIN IMMEDIATE · 获得写锁</text>
-                <line class="message" x1="830" y1="225" x2="570" y2="225" marker-end="url(#race-arrow)" /><text class="diagram-copy" x="700" y="216" text-anchor="middle">BEGIN IMMEDIATE · 等待锁</text>
+                <line class="message" x1="310" y1="190" x2="570" y2="190" marker-end="url(#race-arrow)" /><text class="diagram-copy" x="440" y="181" text-anchor="middle">FOR UPDATE content · 获得行锁</text>
+                <line class="message" x1="830" y1="225" x2="570" y2="225" marker-end="url(#race-arrow)" /><text class="diagram-copy" x="700" y="216" text-anchor="middle">FOR UPDATE content · 等待</text>
                 <rect class="phase" x="340" y="250" width="280" height="92" rx="7" /><text class="diagram-label" x="480" y="274" text-anchor="middle">Tx A</text><text class="diagram-copy" x="480" y="298" text-anchor="middle">INSERT APPROVE</text><text class="diagram-copy" x="480" y="318" text-anchor="middle">round/content → APPROVED</text><text class="diagram-note" x="480" y="335" text-anchor="middle">COMMIT，释放写锁</text>
                 <line class="message response" x1="570" y1="370" x2="310" y2="370" marker-end="url(#race-arrow)" /><text class="diagram-copy" x="440" y="361" text-anchor="middle">200 APPROVED</text>
                 <line class="message response" x1="310" y1="400" x2="95" y2="400" marker-end="url(#race-arrow)" /><text class="diagram-note" x="202" y="391" text-anchor="middle">唯一成功终态</text>
@@ -505,24 +514,24 @@ COMMIT</pre>
 
           <section id="evolution" class="doc-section">
             <p class="eyebrow">10 / Evolution</p>
-            <h2>SQLite 当前实现与 PostgreSQL 目标</h2>
+            <h2>PostgreSQL 当前实现与生产化扩展</h2>
             <div class="table-wrap">
               <table>
-                <thead><tr><th>关注点</th><th>当前 SQLite MVP</th><th>PostgreSQL 目标</th></tr></thead>
+                <thead><tr><th>关注点</th><th>当前 PostgreSQL MVP</th><th>后续生产化</th></tr></thead>
                 <tbody>
-                  <tr><td>进程模型</td><td>单 Node 实例</td><td>多个无状态 API 实例</td></tr>
-                  <tr><td>写并发</td><td><code>BEGIN IMMEDIATE</code> 串行所有写</td><td>仅锁定 content + current round 行</td></tr>
-                  <tr><td>隔离级别</td><td>SQLite 写锁</td><td>READ COMMITTED + 显式 <code>FOR UPDATE</code></td></tr>
-                  <tr><td>ID / 时间</td><td>TEXT / ISO-8601</td><td>uuid / timestamptz</td></tr>
-                  <tr><td>枚举</td><td>TEXT + CHECK</td><td>PostgreSQL enum 或 domain</td></tr>
-                  <tr><td>幂等响应</td><td>TEXT JSON</td><td>jsonb</td></tr>
-                  <tr><td>开放轮次唯一性</td><td>部分唯一索引</td><td>相同部分唯一索引</td></tr>
+                  <tr><td>进程模型</td><td>生产单 Node；双进程测试已通过</td><td>多个无状态 API 实例与滚动发布</td></tr>
+                  <tr><td>写并发</td><td>仅锁定 content + current round 行</td><td>容量与慢事务监控、负载门禁</td></tr>
+                  <tr><td>隔离级别</td><td>READ COMMITTED + 显式 <code>FOR UPDATE</code></td><td>主从切换与连接恢复演练</td></tr>
+                  <tr><td>ID / 时间</td><td>text / timestamptz</td><td>保持 API 标识稳定</td></tr>
+                  <tr><td>枚举</td><td>text + CHECK</td><td>变更时采用前向兼容 migration</td></tr>
+                  <tr><td>幂等响应</td><td>jsonb</td><td>归档和长期审计策略</td></tr>
+                  <tr><td>开放轮次唯一性</td><td>部分唯一索引</td><td>持续保留数据库级不变量</td></tr>
                   <tr><td>多实例限流</td><td>进程内 IP 计数</td><td>网关或 Redis 共享限流</td></tr>
-                  <tr><td>部署</td><td><span class="status pass">READY</span> 单机 systemd</td><td><span class="status partial">PLANNED</span> 多副本 + 连接池</td></tr>
+                  <tr><td>部署</td><td><span class="status pass">READY</span> systemd + PostgreSQL</td><td><span class="status partial">PLANNED</span> 多副本 + 数据库高可用</td></tr>
                 </tbody>
               </table>
             </div>
-            <h3>PostgreSQL 锁顺序</h3>
+            <h3>已实现的锁顺序</h3>
             <pre>BEGIN;
 -- 所有命令保持相同锁顺序，降低死锁概率
 SELECT * FROM contents
@@ -535,7 +544,7 @@ FOR UPDATE;
 
 -- 事务内校验、插入 decision、更新 round/content、保存幂等响应
 COMMIT;</pre>
-            <h3>目标 DDL 的关键约束</h3>
+            <h3>当前 DDL 的关键约束</h3>
             <pre>CREATE UNIQUE INDEX review_rounds_one_open_per_content
   ON review_rounds (content_id)
   WHERE status = 'OPEN';
@@ -556,7 +565,7 @@ ALTER TABLE review_rounds
     OR
     (status IN ('APPROVED', 'REJECTED') AND completed_at IS NOT NULL)
   );</pre>
-            <div class="callout warning"><strong>迁移验收条件：</strong>不能只完成表结构迁移。必须使用真实 PostgreSQL 与两个独立连接复现第二票通过/拒绝竞争、重复提交、同审核人并发决定和事务故障回滚，再允许横向扩容。</div>
+            <div class="callout warning"><strong>扩容门禁：</strong>当前已使用真实 PostgreSQL、两个独立 Node 进程和独立连接池复现第二票通过/拒绝竞争、重复提交、同审核人并发决定及事务故障回滚。生产横向扩容前仍须完成共享限流、滚动发布和数据库高可用演练。</div>
             <h3>明确不在当前范围</h3>
             <ul>
               <li>真实组织身份、单点登录和角色目录同步。</li>

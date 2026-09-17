@@ -25,24 +25,41 @@ release_dir="$app_root/releases/$release_id"
 current_link="$app_root/current"
 next_link="$app_root/.current-$release_id"
 service_file="$HOME/.config/systemd/user/reviewflow.service"
+env_file="$app_root/shared/reviewflow.env"
+backup_dir="$app_root/shared/backups"
 
 if [[ -e "$release_dir" ]]; then
   echo "Release already exists: $release_dir" >&2
   exit 1
 fi
 
-if [[ ! -f "$app_root/shared/reviewflow.env" ]]; then
-  echo "Missing production environment file: $app_root/shared/reviewflow.env" >&2
+if [[ ! -f "$env_file" ]]; then
+  echo "Missing production environment file: $env_file" >&2
   exit 1
 fi
 
-mkdir -p "$release_dir" "$app_root/shared/data" "$(dirname "$service_file")"
+if tar -tzf "$archive" | grep -E '(^/|(^|/)\.\.(/|$))' >/dev/null; then
+  echo 'Release archive contains an unsafe path' >&2
+  exit 1
+fi
+
+set -a
+source "$env_file"
+set +a
+: "${DATABASE_URL:?DATABASE_URL is required}"
+: "${SESSION_SECRET:?SESSION_SECRET is required}"
+
+mkdir -p "$release_dir" "$backup_dir" "$(dirname "$service_file")"
 tar -xzf "$archive" -C "$release_dir"
 
 (
   cd "$release_dir"
   npm ci --omit=dev --ignore-scripts
-  DATA_DIR="$app_root/shared/data" npm run seed:demo
+  backup_file="$backup_dir/pre-release-$release_id.dump"
+  pg_dump "$DATABASE_URL" --format=custom --file="$backup_file"
+  chmod 600 "$backup_file"
+  npm run db:migrate
+  npm run seed:demo
 )
 
 install -m 0644 "$release_dir/deploy/reviewflow.service" "$service_file"

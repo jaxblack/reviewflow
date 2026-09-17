@@ -29,6 +29,7 @@
           <a href="./design.html">系统设计</a>
           <a href="./edge-cases.html">边界与决策</a>
           <a href="./test-report.html">测试报告</a>
+          <a href="./concurrency-report.html">分布式与并发</a>
           <a aria-current="page" href="./acceptance-report.html">验收报告</a>
           <a href="./operations.html">部署运行</a>
         </nav>
@@ -38,18 +39,18 @@
           <header class="page-header">
             <p class="kicker">MVP acceptance / 2026-09-17</p>
             <h1>验收报告</h1>
-            <p class="lead">ReviewFlow 已完成单实例 MVP 的核心业务闭环：企业级 PC 工作台、服务端身份、内容提交、分级审核、拒绝重提、不可变历史、用户角色管理、幂等和唯一终态均可运行并具有自动化证据。</p>
+            <p class="lead">ReviewFlow 已完成 PostgreSQL MVP 的核心业务闭环：企业级 PC 工作台、服务端身份、内容提交、分级审核、拒绝重提、不可变历史、用户角色管理、跨实例幂等和唯一终态均可运行并具有自动化证据。</p>
             <div class="page-meta">
               <span><strong>验收结论</strong> <span class="status pass">通过</span></span>
               <span><strong>功能基线</strong> 0.1.0</span>
-              <span><strong>范围</strong> 单实例 SQLite MVP</span>
+              <span><strong>范围</strong> PostgreSQL 16 MVP</span>
             </div>
           </header>
 
           <div class="metric-strip" aria-label="验收结果摘要">
             <div class="metric"><strong>18/18</strong><span>核心要求</span></div>
             <div class="metric"><strong>56</strong><span>固定样例</span></div>
-            <div class="metric"><strong>26/26</strong><span>自动化测试</span></div>
+            <div class="metric"><strong>40/40</strong><span>自动化测试</span></div>
             <div class="metric"><strong>PASS</strong><span>发布结论</span></div>
           </div>
 
@@ -65,6 +66,7 @@
                   <tr><td>公开代码库</td><td><a href="https://github.com/jaxblack/reviewflow">https://github.com/jaxblack/reviewflow</a></td><td><span class="status pass">PUBLIC</span></td></tr>
                   <tr><td>系统设计</td><td><a href="./design.html">design.html</a></td><td><span class="status pass">READY</span></td></tr>
                   <tr><td>测试报告</td><td><a href="./test-report.html">test-report.html</a></td><td><span class="status pass">PASS</span></td></tr>
+                  <tr><td>分布式与并发</td><td><a href="./concurrency-report.html">concurrency-report.html</a></td><td><span class="status pass">9 / 9</span></td></tr>
                   <tr><td>部署运行</td><td><a href="./operations.html">operations.html</a></td><td><span class="status pass">READY</span></td></tr>
                 </tbody>
               </table>
@@ -128,7 +130,7 @@
                   <tr><td>AC-C02</td><td>权限和状态由服务端校验</td><td>角色、作者、状态和版本均在事务命令内检查</td><td><span class="status pass">PASS</span></td></tr>
                   <tr><td>AC-C03</td><td>同一审核人同一轮只能决定一次</td><td>UNIQUE(round_id, reviewer_id) + 服务检查</td><td><span class="status pass">PASS</span></td></tr>
                   <tr><td>AC-C04</td><td>重试不能产生重复记录</td><td>Idempotency-Key、请求摘要与 T-03</td><td><span class="status pass">PASS</span></td></tr>
-                  <tr><td>AC-C05</td><td>并发终态保持唯一</td><td>BEGIN IMMEDIATE 串行写入、终态 CAS 与 T-04</td><td><span class="status pass">PASS</span></td></tr>
+                  <tr><td>AC-C05</td><td>并发终态保持唯一</td><td>PostgreSQL 固定行锁顺序、终态重检与 9 个双进程场景</td><td><span class="status pass">PASS</span></td></tr>
                   <tr><td>AC-C06</td><td>历史展示当时审核内容</td><td>每轮引用不可变 content_revision</td><td><span class="status pass">PASS</span></td></tr>
                   <tr><td>AC-C07</td><td>状态和审核历史原子提交</td><td>decision、round、content、idempotency 同事务</td><td><span class="status pass">PASS</span></td></tr>
                 </tbody>
@@ -143,7 +145,7 @@
               <li><span>线上 HTTPS 入口返回 200，不要求额外密码。</span></li>
               <li><span>应用只监听服务器回环地址，由 Caddy 统一代理。</span></li>
               <li><span>用户级 systemd 服务处于 active、enabled，异常退出自动重启。</span></li>
-              <li><span>SQLite 数据位于共享持久目录，不随 release 切换丢失。</span></li>
+              <li><span>PostgreSQL 16 由独立服务管理；每次 migration 前自动生成权限为 600 的 pg_dump。</span></li>
               <li><span>56 条固定 demo 数据可查询，其中 19 条处于开放审核；状态和风险分布符合数据契约。</span></li>
               <li><span>1280、1440 和 1600 PC 视口无页面级横向溢出，浏览器控制台无错误。</span></li>
             </ul>
@@ -157,10 +159,10 @@
               <table>
                 <thead><tr><th>风险</th><th>当前控制</th><th>生产化要求</th></tr></thead>
                 <tbody>
-                  <tr><td>单实例故障</td><td>systemd 自动重启、SQLite 持久目录</td><td>迁移 PostgreSQL、多副本与监控告警</td></tr>
+                  <tr><td>单应用实例故障</td><td>systemd 自动重启、PostgreSQL 独立持久化</td><td>多副本、共享限流与监控告警</td></tr>
                   <tr><td>公开身份切换</td><td>只允许演示数据</td><td>接入真实组织身份与权限同步</td></tr>
-                  <tr><td>并发证明范围</td><td>SQLite 写锁与进程内竞争测试</td><td>独立连接屏障、故障注入和数据库事实断言</td></tr>
-                  <tr><td>备份恢复</td><td>发布前人工备份</td><td>定时备份、恢复演练和保留策略</td></tr>
+                  <tr><td>并发证明范围</td><td>两个应用进程共享单 PostgreSQL 主库</td><td>主从故障转移、网络分区、压力和长时间运行</td></tr>
+                  <tr><td>备份恢复</td><td>每次 release 前自动 pg_dump</td><td>异机定时备份、恢复演练和保留策略</td></tr>
                 </tbody>
               </table>
             </div>

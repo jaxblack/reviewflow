@@ -24,6 +24,10 @@
       "label": "测试报告"
     },
     {
+      "file": "concurrency-report.html",
+      "label": "分布式与并发"
+    },
+    {
       "file": "acceptance-report.html",
       "label": "验收报告"
     },

@@ -9,7 +9,6 @@ WorkingDirectory=%h/apps/reviewflow/current
 Environment=NODE_ENV=production
 Environment=HOST=127.0.0.1
 Environment=PORT=3000
-Environment=DATA_DIR=%h/apps/reviewflow/shared/data
 Environment=COOKIE_SECURE=true
 Environment=COOKIE_PATH=/reviewflow
 Environment=REVIEWFLOW_WRITE_RATE_LIMIT=30
@@ -18,8 +17,6 @@ Environment=REVIEWFLOW_MAX_CONTENTS=500
 Environment=REVIEWFLOW_MAX_ROUNDS_PER_CONTENT=20
 Environment=REVIEWFLOW_MAX_IDEMPOTENCY_RECORDS=2000
 Environment=REVIEWFLOW_IDEMPOTENCY_TTL_HOURS=24
-Environment=REVIEWFLOW_MAX_DATABASE_BYTES=134217728
-Environment=REVIEWFLOW_DATABASE_RESERVE_BYTES=8388608
 EnvironmentFile=%h/apps/reviewflow/shared/reviewflow.env
 ExecStart=/usr/bin/node dist-server/server/index.js
 Restart=on-failure

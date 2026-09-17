@@ -109,27 +109,27 @@ flowchart LR
 Browser[React SPA] -->|Cookie + JSON| API[Fastify API]
 API --> Auth[服务端会话身份]
 API --> Policy[权限与状态机]
-Policy --> DB[(SQLite WAL)]
+Policy --> DB[(PostgreSQL 16)]
 ```
 
-当前交付是一个适合演示和单机部署的模块化单体：
+当前交付是一个 PostgreSQL-only 的模块化单体：
 
 - React 19 + TypeScript + Vite 负责单页全景审核工作台和 ADMIN 管理中心。
 - Fastify 5 + Zod 负责 API、严格输入校验和服务端权限。
-- Node.js 内置 `node:sqlite` + 直接 SQL 负责持久化。
-- SQLite 使用 WAL、`busy_timeout` 和 `BEGIN IMMEDIATE` 串行化关键写事务。
+- 原生 `pg` 连接池和版本化 SQL migration 负责 PostgreSQL 16 持久化。
+- `SELECT ... FOR UPDATE` 按 content → round 的固定顺序锁定聚合；事务级 advisory lock 串行化跨实例幂等 key 和角色管理。
 - 生产构建由同一个 Fastify 进程提供 API 和静态资源。
 
-### 当前实现与目标设计
+### 实现与验证基线
 
-仓库中的两类文档有不同定位，请勿混淆：
+仓库同时保留当前实现文档和后续生产化蓝图：
 
 | 层次 | 数据库与并发 | 验证方式 | 状态 |
 | --- | --- | --- | --- |
-| 当前可运行 MVP | SQLite WAL、单写事务、单应用实例 | Vitest、Fastify inject、内存 SQLite | 已实现 |
-| 完整目标方案 | PostgreSQL、Kysely、`SELECT FOR UPDATE`、数据库账号隔离 | Testcontainers、并发屏障、故障注入、Playwright | 设计与评审基线 |
+| 当前可运行 MVP | PostgreSQL 16、原生 `pg`、行锁、advisory lock、关系约束 | 真实 PostgreSQL schema、Fastify inject、双 Node 进程并发屏障 | 已实现并验证 |
+| 后续生产化 | 数据库高可用、共享限流、集中身份、可观测性 | 故障转移、负载、长时间运行和浏览器 E2E | 尚未实现 |
 
-当前代码没有声称已经使用 PostgreSQL、Kysely、Testcontainers 或 Playwright。需要横向扩容或多实例运行时，应先按[系统设计](docs/reviewflow-system-design.md)迁移到 PostgreSQL，不能直接复制 SQLite 应用实例。
+当前实现不使用 Kysely 或 Testcontainers，也没有把 PostgreSQL 主从高可用和 Playwright E2E 声称为已完成。多应用进程共享一个 PostgreSQL 主库时的终态一致性已有确定性并发测试；生产仍部署单个 systemd 应用实例，IP 限流状态也仍是进程内存。
 
 ## 快速开始
 
@@ -137,23 +137,45 @@ Policy --> DB[(SQLite WAL)]
 
 - Node.js 22.5 或更高版本
 - npm 10 或更高版本
+- PostgreSQL 16（也可使用 Compose 内置服务）
 
-### 安装和启动
+### 使用 Docker Compose 启动
 
 ```bash
 git clone https://github.com/jaxblack/reviewflow.git
 cd reviewflow
+cp .env.example .env
+# 将 .env 中两个占位密码替换为随机值
+docker compose up -d --build
+```
+
+容器启动后访问 <http://localhost:3000/reviewflow/>，健康检查位于 <http://localhost:3000/api/health>。
+
+### 本地源码开发
+
+先在 `.env` 中设置 `POSTGRES_PASSWORD`，启动数据库，再把同一密码用于本地连接：
+
+```bash
 npm ci
+docker compose up -d postgres
+export DATABASE_URL='postgres://reviewflow:<POSTGRES_PASSWORD>@127.0.0.1:5432/reviewflow'
+export SESSION_SECRET="$(openssl rand -hex 32)"
 npm run dev
 ```
 
-开发服务启动后：
+应用启动会自动执行 `db/migrations/*.sql`。需要写入 56 条固定演示数据时，另开终端并保留相同 `DATABASE_URL`：
+
+```bash
+npm run build
+npm run seed:demo
+```
+
+源码开发服务：
 
 - Web：<http://localhost:5173/reviewflow/>
 - API：<http://localhost:3001>
 - 健康检查：<http://localhost:3001/api/health>
 - 默认用户：Alice
-- 本地数据：`.data/reviewflow.db`
 
 开发模式提供默认会话密钥，仅用于本地运行。生产环境必须显式设置安全的 `SESSION_SECRET`。
 
@@ -355,20 +377,22 @@ npm run build
 - 公开写接口的跨路由 IP 限流、用户/内容/轮次/幂等硬配额和过期记录回收。
 - 56 条固定演示数据的幂等生成、状态分布和关键数据库不变量，其中 19 条处于开放审核。
 
-当前测试使用 Fastify `inject()` 和内存 SQLite。PostgreSQL 行锁、确定性并发屏障、故障注入与浏览器 E2E 的完整规划见[测试方案](docs/reviewflow-test-plan.md)，这些属于后续生产化门禁。
+数据库测试为每个 suite 创建独立 PostgreSQL schema，并执行真实 migration。并发矩阵启动两个独立 Node/Fastify/`pg.Pool` 进程，使用文件屏障让请求同时进入事务，最后通过第三个数据库连接断言唯一终态。它覆盖 9 个并发场景，包括相反审核决定、重复提交、跨实例幂等和 8 位审核人竞争；详细证据见[分布式与并发测试报告](https://qlili.com/reviewflow/docs/concurrency-report.html)。
+
+当前门禁还直接验证部分唯一索引、复合外键、CHECK、重复 migration 和 PostgreSQL trigger 注入后的事务回滚。尚未覆盖数据库主从故障转移、网络分区、持续负载和浏览器 E2E。
 
 ## CI/CD
 
 仓库使用 GitHub Actions 执行两段式流水线：
 
-- **CI**：Pull Request 和 `main` 分支提交均执行 `npm ci`、`npm run check`，随后构建生产 Docker 镜像并启动容器验证 `/api/health`。
-- **CD**：当前仓库 `main` 分支的 CI 全部成功后自动进入 `production` Environment，不再等待人工审批。流水线构建不可变 release，通过 SSH 上传到腾讯云，原子切换 `current` 软链并重启单实例 systemd 服务；健康检查失败时恢复上一个 release。
+- **CI**：Pull Request 和 `main` 分支提交均启动 PostgreSQL 16 service，执行 `npm ci`、`npm run check`，随后构建生产 Docker 镜像并连接独立 PostgreSQL service 验证 `/api/health`。
+- **CD**：当前仓库 `main` 分支的 CI 全部成功后自动进入 `production` Environment，不再等待人工审批。流水线构建不可变 release，通过 SSH 上传到腾讯云；发布脚本先执行自定义格式 `pg_dump`，再执行 migration 和幂等 seed，最后原子切换 `current` 并重启 systemd 服务。应用健康检查失败时恢复上一个 release。
 
 这里放宽的只有公开 Demo 的**人工审批**。CI 全量门禁、仅同仓库 `main` push 可发布、Environment 分支限制、生产 secrets 隔离、单实例串行发布和失败回滚仍然保留；Workflow 内也注释了这些边界。若接入真实内容或组织身份，应重新启用 required reviewers。
 
 生产部署需要先在 GitHub 中为 `production` Environment 配置 `main` 分支保护，并设置 `PRODUCTION_HOST`、`PRODUCTION_USER`、`PRODUCTION_SSH_PRIVATE_KEY`、`PRODUCTION_SSH_KNOWN_HOSTS`。`SESSION_SECRET` 不经过 CI/CD，仍只保存在服务器的 `shared/reviewflow.env`。完整初始化和密钥配置见[腾讯云单机部署](deploy/tencent-cloud.md)。
 
-当前 SQLite 架构只允许单应用实例，因此 CD 使用短暂停机重启，不执行多副本滚动发布。需要零停机或横向扩容时，应先迁移 PostgreSQL。
+当前生产仍使用一个 systemd 应用实例和一个 PostgreSQL 主库，CD 允许短暂停机，不执行多副本滚动发布。数据库事务已通过双进程竞争验证，但在横向扩容前仍需把 IP 限流迁移到共享存储，并补齐数据库高可用与连接故障演练。
 
 ## 演示数据
 
@@ -436,11 +460,11 @@ npm run seed:demo
 - key 相同但请求不同：返回 `409 IDEMPOTENCY_KEY_REUSED`。
 - 事务失败：业务事实和幂等记录一起回滚，客户端可以安全重试。
 
-SQLite 的 `BEGIN IMMEDIATE` 保证关键写事务串行执行。两个请求同时尝试通过或拒绝同一轮时，先提交者决定终态；后续请求重新读取状态并返回 409，不会留下失败方的审核决定。
+PostgreSQL 写事务统一设置 5 秒锁超时和 15 秒语句超时。审核路径按 content → round 的固定顺序执行 `SELECT ... FOR UPDATE`；幂等 key 使用事务级 advisory lock 跨连接串行化。两个请求同时尝试通过或拒绝同一轮时，获得锁的事务决定终态；后续请求重新读取状态并返回 409，不会留下失败方的审核决定。
 
 ### 公开 Demo 容量防护
 
-公开环境不能依赖身份切换入口阻止滥用。所有可改变会话或持久化状态的接口共享每 IP 每分钟 30 次写入额度；达到用户、内容、单内容轮次、幂等记录或 SQLite 空间上限后返回 `507 CAPACITY_LIMIT_REACHED`，失败事务不再增长数据库。默认 SQLite 主库硬限 128 MiB，并预留 8 MiB 写入空间。
+公开环境不能依赖身份切换入口阻止滥用。所有可改变会话或持久化状态的接口共享每 IP 每分钟 30 次写入额度；达到用户、内容、单内容轮次或幂等记录上限后返回 `507 CAPACITY_LIMIT_REACHED`，容量计数与业务写入在同一 PostgreSQL 事务中更新，失败事务不增长业务数据。IP 限流仍为单进程内存状态。
 
 ## Docker
 
@@ -454,7 +478,7 @@ curl --fail http://127.0.0.1:3000/api/health
 健康检查应返回：
 
 ```json
-{"status":"ok","database":"sqlite"}
+{"status":"ok","database":"postgresql"}
 ```
 
 Compose 只把服务绑定到 `127.0.0.1`，用于通过 Caddy 或 Nginx 提供 HTTPS。前端资源的部署基路径是 `/reviewflow/`；反向代理需要剥离此前缀，并设置 `COOKIE_PATH=/reviewflow`。完整步骤见[腾讯云单机部署](deploy/tencent-cloud.md)。
@@ -463,10 +487,11 @@ Compose 只把服务绑定到 `127.0.0.1`，用于通过 Caddy 或 Nginx 提供 
 
 | 变量 | 默认值 | 说明 |
 | --- | --- | --- |
+| `DATABASE_URL` | 无 | PostgreSQL 连接串；所有运行模式必填 |
+| `TEST_DATABASE_URL` | 无 | 测试专用 PostgreSQL 连接串；`npm test` 必填，不得指向生产库 |
 | `SESSION_SECRET` | 仅开发模式有不安全默认值 | 生产环境必填，用于签名用户 Cookie |
 | `HOST` | `0.0.0.0` | Fastify 监听地址；反向代理部署建议设为 `127.0.0.1` |
 | `PORT` | `3000` | 生产 HTTP 端口 |
-| `DATA_DIR` | `.data` | SQLite 文件目录；容器内为 `/data` |
 | `COOKIE_SECURE` | `false` | HTTPS 环境设置为 `true` |
 | `COOKIE_PATH` | `/` | 子路径部署设置为 `/reviewflow` |
 | `REVIEWFLOW_PORT` | `3000` | Compose 映射到宿主机的本地端口 |
@@ -476,8 +501,6 @@ Compose 只把服务绑定到 `127.0.0.1`，用于通过 Caddy 或 Nginx 提供 
 | `REVIEWFLOW_MAX_ROUNDS_PER_CONTENT` | `20` | 单内容审核轮次硬上限 |
 | `REVIEWFLOW_MAX_IDEMPOTENCY_RECORDS` | `2000` | 未过期幂等记录硬上限 |
 | `REVIEWFLOW_IDEMPOTENCY_TTL_HOURS` | `24` | 幂等响应保留小时数 |
-| `REVIEWFLOW_MAX_DATABASE_BYTES` | `134217728` | SQLite 主库最大字节数 |
-| `REVIEWFLOW_DATABASE_RESERVE_BYTES` | `8388608` | 写入停止前保留空间 |
 
 ## 项目结构
 
@@ -488,7 +511,8 @@ reviewflow/
 │   ├── components/      # 内容编辑、详情和状态组件
 │   ├── api.ts           # 前端 API 与幂等请求封装
 │   └── App.tsx          # 用户切换、统一队列、详情和管理中心编排
-├── server/              # Fastify API、SQLite schema、事务和测试
+├── server/              # Fastify API、PostgreSQL store、事务和测试
+├── db/migrations/       # 版本化 PostgreSQL schema
 ├── public/docs/         # 自动生成的在线 HTML 文档，不直接编辑
 ├── docs/                # 架构、设计、评审、测试、演示文档和 PC 截图
 │   └── site/            # HTML 页面模板、manifest 与样式源文件
@@ -502,12 +526,13 @@ reviewflow/
 
 | 文档 | 定位 |
 | --- | --- |
-| [HTML 文档中心](https://qlili.com/reviewflow/docs/) | 在线浏览系统设计、测试报告、验收报告和部署运行说明 |
+| [HTML 文档中心](https://qlili.com/reviewflow/docs/) | 在线浏览系统设计、测试报告、并发证据、验收报告和部署运行说明 |
+| [分布式与并发](https://qlili.com/reviewflow/docs/concurrency-report.html) | 双 Node 进程、独立连接池、确定性屏障和 PostgreSQL 最终事实 |
 | [边界与决策](https://qlili.com/reviewflow/docs/edge-cases.html) | 原始歧义、权限可见性、状态版本、并发幂等、角色变化和待确认项 |
 | [P0 安全审查](docs/security-review.md) | 公网威胁模型、已修复漏洞、防护边界和残余风险 |
 | [HTML 生成与维护](docs/html-documentation.md) | 模板目录、manifest、生成命令、更新流程与故障排查 |
-| [当前实现架构](docs/architecture.md) | SQLite MVP 的状态机、数据模型、一致性和部署边界 |
-| [完整系统设计](docs/reviewflow-system-design.md) | PostgreSQL 目标模型、DDL、API、权限、事务与实施顺序 |
+| [当前实现架构](docs/architecture.md) | PostgreSQL MVP 的状态机、数据模型、一致性和部署边界 |
+| [完整系统设计](docs/reviewflow-system-design.md) | 关系模型、DDL、API、权限、事务与后续生产化路线 |
 | [技术评审方案](docs/reviewflow-technical-review.md) | 评审门禁、检查清单、风险分级、关键链路和结论模板 |
 | [测试方案](docs/reviewflow-test-plan.md) | 14 条不变量追踪、集成/并发/故障注入/E2E 用例与退出标准 |
 | [演示场景](docs/demo-scenarios.md) | 56 条种子数据、状态分布及角色切换演示顺序 |
@@ -521,7 +546,7 @@ reviewflow/
 2. 用内容工作副本、不可变 revision、review round 和 decision 固化领域模型。
 3. 按创建/提交、审核、历史和部署进行纵向实现，而不是一次生成完整系统。
 4. 用数据库约束、事务和自动化测试验证结论。
-5. 单独保留技术评审与测试蓝图，明确当前 MVP 和生产目标之间的差距。
+5. 单独保留技术评审与测试蓝图，明确已验证的 PostgreSQL MVP 和高可用生产目标之间的差距。
 
 可审查证据包括系统设计、评审方案、测试方案、数据库 schema、API 集成测试、演示 seed 测试和部署材料。
 
@@ -536,7 +561,7 @@ reviewflow/
 - 系统阻止移除最后一个 ADMIN；撤销 REVIEWER 时会校验剩余票数和未决定审核人，避免卡住开放轮次。
 - 删除内容、撤回、申诉、通知和 SLA 不在当前范围内。
 - 当前身份切换只用于演示，不具备真实认证系统的安全属性。
-- 当前 SQLite 实现只支持单应用实例，不支持横向扩容或滚动多副本部署。
-- 当前没有 Testcontainers PostgreSQL 测试和 Playwright E2E；对应方案已经文档化，但不能视为已通过的测试。
+- 当前生产部署只有一个应用实例和一个 PostgreSQL 主库；双进程一致性测试不等价于滚动发布、数据库高可用或跨可用区容灾。
+- 当前没有 Testcontainers 编排、共享分布式限流和 Playwright E2E；对应方案已经文档化，但不能视为已通过的测试。
 
 更完整的边界决定、数据库升级路线和验收标准见[系统设计](docs/reviewflow-system-design.md)。

@@ -1,6 +1,6 @@
 # ReviewFlow 测试方案
 
-> **文档定位**：本文是生产化目标测试蓝图。当前仓库已实现其中一部分 Vitest + Fastify inject + SQLite 测试；Testcontainers、PostgreSQL 行锁、故障注入和 Playwright 用例尚未全部落地，实际状态见 [README](../README.md)。
+> **文档定位**：本文是生产化测试蓝图。当前仓库已实现 Vitest + Fastify inject 的真实 PostgreSQL API、schema、事务回滚和双进程确定性并发测试；Testcontainers 编排、数据库高可用故障注入、负载与 Playwright 用例尚未落地，实际状态见 [README](../README.md)。
 
 ## 1. 文档信息
 
@@ -72,12 +72,12 @@ P0/P1 场景必须作为合并门禁；P2 可以按发布风险决定是否阻�
 
 ### 5.1 环境要求
 
-- Node.js 使用项目声明的受支持版本，依赖由 pnpm 锁文件固定。
-- 集成和并发测试由 Testcontainers 启动真实 PostgreSQL。
+- Node.js 使用项目声明的受支持版本，依赖由 npm lockfile 固定。
+- 集成和并发测试由 CI service 或显式 `TEST_DATABASE_URL` 提供真实 PostgreSQL。
 - PostgreSQL 主版本应与目标部署环境一致。
 - 每次测试从 migration 创建的空库开始，再执行固定 seed。
 - 数据库存储 UTC 时间，展示层按浏览器本地时区格式化。
-- 不使用 SQLite 或内存数据库替代约束和锁测试。
+- 不使用其他数据库引擎或内存替身代替约束和锁测试。
 
 ### 5.2 隔离策略
 

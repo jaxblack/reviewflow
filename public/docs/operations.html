@@ -29,6 +29,7 @@
           <a href="./design.html">系统设计</a>
           <a href="./edge-cases.html">边界与决策</a>
           <a href="./test-report.html">测试报告</a>
+          <a href="./concurrency-report.html">分布式与并发</a>
           <a href="./acceptance-report.html">验收报告</a>
           <a aria-current="page" href="./operations.html">部署运行</a>
         </nav>
@@ -38,10 +39,10 @@
           <header class="page-header">
             <p class="kicker">Deployment / Runtime / Recovery</p>
             <h1>部署与运行</h1>
-            <p class="lead">线上版本由 GitHub Actions 在 main CI 全部通过后自动发布，采用不可变 release、共享数据目录、用户级 systemd 与 Caddy HTTPS 代理。应用只绑定回环地址，发布切换不移动 SQLite 数据。</p>
+            <p class="lead">线上版本由 GitHub Actions 在 main CI 全部通过后自动发布，采用不可变 release、PostgreSQL 发布前备份、版本化 migration、用户级 systemd 与 Caddy HTTPS 代理。应用只绑定回环地址，数据库由独立服务管理。</p>
             <div class="page-meta">
               <span><strong>入口</strong> qlili.com/reviewflow/</span>
-              <span><strong>运行模式</strong> 单实例</span>
+              <span><strong>运行模式</strong> 单应用实例 + PostgreSQL 16</span>
               <span><strong>服务状态</strong> <span class="status pass">ACTIVE</span></span>
             </div>
           </header>
@@ -49,7 +50,7 @@
           <div class="metric-strip" aria-label="运行状态">
             <div class="metric"><strong>HTTPS</strong><span>Caddy 入口</span></div>
             <div class="metric"><strong>3000</strong><span>回环监听端口</span></div>
-            <div class="metric"><strong>WAL</strong><span>SQLite 模式</span></div>
+            <div class="metric"><strong>PG 16</strong><span>关系数据库</span></div>
             <div class="metric"><strong>1</strong><span>应用实例</span></div>
           </div>
 
@@ -63,7 +64,7 @@
               <div class="flow-arrow">→</div>
               <div class="flow-node">Fastify<small>127.0.0.1:3000</small></div>
               <div class="flow-arrow">→</div>
-              <div class="flow-node">SQLite<small>shared/data</small></div>
+              <div class="flow-node">PostgreSQL 16<small>本机数据库服务</small></div>
             </div>
             <div class="callout"><strong>公开入口：</strong>ReviewFlow 当前不启用额外密码。用户切换用于演示，任何访问者都可能改变演示数据。</div>
           </section>
@@ -77,14 +78,13 @@
 │   ├── &lt;release-id&gt;/
 │   └── ...
 └── shared/
-    ├── data/reviewflow.db
-    ├── backups/
+  ├── backups/pre-release-&lt;release-id&gt;.dump
     └── reviewflow.env</pre>
             <ul>
               <li><code>releases</code> 保存不可变应用版本，构建通过后才允许切换。</li>
               <li><code>current</code> 使用临时软链和原子 rename 切换。</li>
-              <li><code>shared/data</code> 独立持久化，不随代码发布替换。</li>
-              <li><code>reviewflow.env</code> 权限为 600，不进入代码库。</li>
+              <li><code>shared/backups</code> 保存每次 migration 前的 PostgreSQL 自定义格式备份。</li>
+              <li><code>reviewflow.env</code> 保存 DATABASE_URL 和 SESSION_SECRET，权限为 600，不进入代码库。</li>
             </ul>
           </section>
 
@@ -92,12 +92,12 @@
             <p class="eyebrow">03 / Release</p>
             <h2>发布门禁与切换</h2>
             <ol>
-              <li>GitHub Actions 对 main push 执行 <code>npm ci</code>、<code>npm run check</code> 和生产容器健康检查。</li>
+              <li>GitHub Actions 对 main push 启动 PostgreSQL 16，执行 <code>npm ci</code>、<code>npm run check</code> 和生产容器健康检查。</li>
               <li>仅当前仓库 main 的成功 CI 可触发 production workflow；fork、PR 和其他分支不会获得生产 secrets。</li>
               <li>CD 构建不可变 release 压缩包，通过专用 SSH 密钥上传并以 commit SHA 创建 release 目录。</li>
-              <li>服务器安装锁定依赖，并向共享数据库幂等补齐缺失的 56 条固定 <code>demo-*</code> 数据。</li>
+              <li>服务器安装锁定依赖，执行 <code>pg_dump</code>，再运行 migration 和幂等 seed。</li>
               <li>原子切换 <code>current</code>，重启用户级 systemd 单实例。</li>
-              <li>有限重试验证本机健康接口；失败时安装脚本恢复上一软链并重启旧版本。</li>
+              <li>有限重试验证本机健康接口；失败时安装脚本恢复上一应用软链并重启旧版本，数据库 schema 不自动回退。</li>
               <li>公开 Demo 不设置人工审批；接入真实内容前必须重新启用 production required reviewers。</li>
             </ol>
             <pre>systemctl --user status reviewflow --no-pager
@@ -115,7 +115,7 @@ curl --fail https://qlili.com/reviewflow/api/health</pre>
                   <tr><td><code>NODE_ENV</code></td><td>production</td><td>启用生产静态资源与安全配置</td></tr>
                   <tr><td><code>HOST</code></td><td>127.0.0.1</td><td>阻止绕过 Caddy 直接访问应用</td></tr>
                   <tr><td><code>PORT</code></td><td>3000</td><td>Fastify 监听端口</td></tr>
-                  <tr><td><code>DATA_DIR</code></td><td>shared/data</td><td>SQLite 持久化目录</td></tr>
+                  <tr><td><code>DATABASE_URL</code></td><td>远端环境文件</td><td>PostgreSQL 应用账号连接串，不得写入日志或代码库</td></tr>
                   <tr><td><code>COOKIE_SECURE</code></td><td>true</td><td>Cookie 仅通过 HTTPS 传输</td></tr>
                   <tr><td><code>COOKIE_PATH</code></td><td>/reviewflow</td><td>限制会话 Cookie 的 URL 范围</td></tr>
                   <tr><td><code>SESSION_SECRET</code></td><td>远端环境文件</td><td>签名会话，不得写入日志或代码库</td></tr>
@@ -125,8 +125,6 @@ curl --fail https://qlili.com/reviewflow/api/health</pre>
                   <tr><td><code>REVIEWFLOW_MAX_ROUNDS_PER_CONTENT</code></td><td>20</td><td>单内容审核轮次上限</td></tr>
                   <tr><td><code>REVIEWFLOW_MAX_IDEMPOTENCY_RECORDS</code></td><td>2000</td><td>未过期幂等记录上限</td></tr>
                   <tr><td><code>REVIEWFLOW_IDEMPOTENCY_TTL_HOURS</code></td><td>24</td><td>幂等重放保证窗口</td></tr>
-                  <tr><td><code>REVIEWFLOW_MAX_DATABASE_BYTES</code></td><td>134217728</td><td>SQLite 主库 128 MiB 硬上限</td></tr>
-                  <tr><td><code>REVIEWFLOW_DATABASE_RESERVE_BYTES</code></td><td>8388608</td><td>低于 8 MiB 可用页时暂停写入</td></tr>
                 </tbody>
               </table>
             </div>
@@ -136,15 +134,15 @@ curl --fail https://qlili.com/reviewflow/api/health</pre>
             <p class="eyebrow">05 / Data</p>
             <h2>数据、种子与备份</h2>
             <h3>演示数据</h3>
-            <p>种子脚本使用 56 个固定 <code>demo-*</code> ID 和 <code>INSERT OR IGNORE</code>，其中 19 条为开放审核。每次生产发布自动补齐缺失记录，但不会覆盖访问者已经修改的内容、自定义用户或额外请求。</p>
+            <p>种子脚本使用 56 个固定 <code>demo-*</code> ID 和 <code>ON CONFLICT DO NOTHING</code>，其中 19 条为开放审核。每次生产发布自动补齐缺失记录，但不会覆盖访问者已经修改的内容、自定义用户或额外请求。</p>
             <pre>npm run build
-DATA_DIR=/path/to/shared/data npm run seed:demo</pre>
+DATABASE_URL=postgres://... npm run seed:demo</pre>
             <h3>备份原则</h3>
             <ul>
-              <li>发布前停止应用，再复制 db、wal 和 shm 文件，避免不一致副本。</li>
-              <li>备份目录使用 UTC 时间戳并保留原文件权限。</li>
-              <li>恢复前先保留当前数据库副本，再切换备份并启动服务。</li>
-              <li>长期运行应增加定时备份、保留周期和恢复演练。</li>
+              <li>安装脚本在 migration 前执行 <code>pg_dump --format=custom</code> 并将文件权限设为 600。</li>
+              <li>应用 release 回滚不等于 schema 回滚；不兼容变更优先提供前向修复。</li>
+              <li>恢复前停止应用写入并保留当前数据库备份，再向空库执行 <code>pg_restore</code>。</li>
+              <li>长期运行应增加异机定时备份、保留周期和恢复演练。</li>
             </ul>
           </section>
 
@@ -157,7 +155,8 @@ DATA_DIR=/path/to/shared/data npm run seed:demo</pre>
                 <tbody>
                   <tr><td>健康接口失败</td><td>用户服务状态与 journal</td><td>回滚 current 到上一 release 并重启</td></tr>
                   <tr><td>页面 404</td><td>Caddy handle_path 与 Vite base</td><td>确认资源路径以 /reviewflow/assets 开头</td></tr>
-                  <tr><td>写入被锁</td><td>是否启动多个实例</td><td>保持单实例，检查未退出进程</td></tr>
+                  <tr><td>写入超时</td><td>PostgreSQL 活跃事务、锁等待和连接池</td><td>定位长事务；不要绕过 5 秒锁超时</td></tr>
+                  <tr><td>migration 失败</td><td>schema_migrations、服务 journal 和 pre-release dump</td><td>保持停机，前向修复或按恢复流程处理</td></tr>
                   <tr><td>会话无法切换</td><td>Cookie Secure、Path 和签名密钥</td><td>核对 HTTPS 与环境配置，不输出密钥</td></tr>
                   <tr><td>演示数据被改动</td><td>demo-* 数量与历史</td><td>从备份恢复或清理固定 ID 后重新播种</td></tr>
                 </tbody>
@@ -167,7 +166,7 @@ DATA_DIR=/path/to/shared/data npm run seed:demo</pre>
 
           <footer class="doc-footer">
             <span>ReviewFlow Operations Guide</span>
-            <span>单实例运行基线 · 2026-09-17</span>
+            <span>PostgreSQL 16 运行基线 · 2026-09-17</span>
           </footer>
         </article>
       </main>

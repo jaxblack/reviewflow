@@ -2,7 +2,7 @@
 
 ## 技术方案
 
-ReviewFlow MVP 使用模块化单体：React SPA、Fastify API 和 Node.js 内置 SQLite。单个 Node 进程同时提供 API 与生产静态资源，适合单机演示和快速部署。PC Web 采用固定应用导航、唯一请求清单和审计详情三栏布局，ADMIN 用户角色管理使用独立侧滑抽屉。
+ReviewFlow MVP 使用模块化单体：React SPA、Fastify API 和 PostgreSQL 16。生产由单个 Node 进程同时提供 API 与静态资源，数据通过原生 `pg` 连接池写入独立 PostgreSQL；相同事务协议也已在两个独立应用进程下验证。PC Web 采用固定应用导航、唯一请求清单和审计详情三栏布局，ADMIN 用户角色管理使用独立侧滑抽屉。
 
 ```mermaid
 flowchart LR
@@ -11,10 +11,10 @@ flowchart LR
     API --> Policy[权限与状态机]
     API --> Workspace[统一工作区读模型]
     API --> Admin[用户与角色策略]
-    API --> DB[(SQLite WAL)]
+    API --> DB[(PostgreSQL 16)]
 ```
 
-当前实现保持单实例运行。需要多实例时，应先迁移至 PostgreSQL，再使用数据库行锁协调审核终态。
+当前生产保持单应用实例运行。数据库写路径已使用行锁和事务级 advisory lock 支持多进程协调；横向扩容前还需把进程内 IP 限流迁移到共享存储，并补齐数据库高可用和连接故障演练。
 
 ## 状态机
 
@@ -62,7 +62,7 @@ erDiagram
 
 所有写操作在服务端校验身份、角色、作者和状态。客户端不能传入可信的 actor 或 reviewer ID。
 
-SQLite 使用 WAL 和 `BEGIN IMMEDIATE` 串行化写事务。审核决定、轮次终态、内容状态和幂等结果在同一个事务中提交。通过与拒绝同时到达时，先提交的事务决定唯一终态，后续请求返回冲突且不留下决定记录。
+PostgreSQL 写事务统一设置锁超时与语句超时。审核路径按 content → round 的固定顺序执行 `SELECT ... FOR UPDATE`，审核决定、轮次终态、内容状态和幂等结果在同一事务中提交；幂等 key 和角色管理使用事务级 advisory lock 跨连接串行化。通过与拒绝同时到达时，获得锁的事务决定唯一终态，后续请求返回冲突且不留下决定记录。
 
 每个写请求携带 `Idempotency-Key`：
 
@@ -76,7 +76,7 @@ SQLite 使用 WAL 和 `BEGIN IMMEDIATE` 串行化写事务。审核决定、轮�
 
 公开 Demo 允许切换预置身份，因此不能依赖登录阻止资源滥用。所有写接口共享基于真实客户端 IP 的每分钟限额；应用只信任来自 `127.0.0.1` 或 `::1` 的反向代理地址，避免客户端直接伪造转发头。
 
-数据库同时执行硬容量限制：最多 100 个用户、500 条内容、每条内容 20 个审核轮次和 2,000 条未过期幂等记录。幂等记录保留 24 小时后回收。SQLite `max_page_count` 将主库限制为 128 MiB，保留 8 MiB 写入余量，并通过 WAL 自动检查点和 journal size limit 控制旁路增长。达到任一容量边界时返回 `507 CAPACITY_LIMIT_REACHED`，同一来源写入过快时返回 `429 RATE_LIMITED`；失败请求不会留下业务记录或幂等记录。
+数据库同时执行硬容量限制：最多 100 个用户、500 条内容、每条内容 20 个审核轮次和 2,000 条未过期幂等记录。幂等记录保留 24 小时后回收，容量计数与业务事实由同一 PostgreSQL 事务更新。达到任一容量边界时返回 `507 CAPACITY_LIMIT_REACHED`，同一来源写入过快时返回 `429 RATE_LIMITED`；失败请求不会留下业务记录或幂等记录。
 
 ## PC 工作台
 
@@ -99,6 +99,6 @@ ADMIN 从 PC 左侧“系统 → 用户与权限”进入管理抽屉。抽屉�
 
 ## 部署
 
-生产构建由 Fastify 提供，腾讯云实例使用用户级 systemd 保持单实例运行。应用只监听 `127.0.0.1:3000`，Caddy 提供 HTTPS 并将 `/reviewflow/*` 剥离后反向代理到应用。每次激活 release 前会幂等补齐缺失的固定 `demo-*` 数据，不覆盖已有内容；当前固定种子共 56 条，其中 19 条为开放审核。
+生产构建由 Fastify 提供，腾讯云实例使用用户级 systemd 保持单应用实例运行。应用只监听 `127.0.0.1:3000`，Caddy 提供 HTTPS 并将 `/reviewflow/*` 剥离后反向代理到应用。每次激活 release 前先执行自定义格式 `pg_dump`，再运行版本化 migration，并幂等补齐缺失的固定 `demo-*` 数据；当前固定种子共 56 条。
 
-SQLite 文件位于独立持久化目录，不随 release 替换。生产会话密钥只存放在远端权限为 600 的环境文件中。
+PostgreSQL 数据目录由数据库服务管理，不随应用 release 替换。数据库连接串和生产会话密钥只存放在远端权限为 600 的环境文件中；release 前备份保存在 `shared/backups`。

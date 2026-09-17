@@ -1,10 +1,14 @@
 import type { FastifyInstance } from 'fastify'
 import { randomUUID } from 'node:crypto'
-import type { DatabaseSync } from 'node:sqlite'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import type { Pool } from 'pg'
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import { buildApp } from './app.js'
-import { defaultCapacityLimits } from './capacity.js'
-import { createDatabase, USER_IDS } from './db.js'
+import { USER_IDS } from './postgres/store.js'
+import {
+  createPostgresTestDatabase,
+  hasPostgresTestDatabase,
+  type PostgresTestDatabase,
+} from './test/postgres.js'
 
 interface DetailResponse {
   content: {
@@ -35,22 +39,32 @@ interface WorkspaceResponse {
   }>
 }
 
-describe('ReviewFlow core API', () => {
+const describePostgres = hasPostgresTestDatabase() ? describe : describe.skip
+
+describePostgres('ReviewFlow PostgreSQL core API', () => {
   let app: FastifyInstance
-  let database: DatabaseSync
+  let database: Pool
+  let testDatabase: PostgresTestDatabase
+
+  beforeAll(async () => {
+    testDatabase = await createPostgresTestDatabase('app')
+    database = testDatabase.pool
+  }, 20_000)
 
   beforeEach(async () => {
-    database = createDatabase(':memory:')
+    await testDatabase.reset()
     app = await buildApp({
-      database,
+      pool: database,
+      migrate: false,
       sessionSecret: 'test-session-secret-with-enough-length',
     })
   })
 
   afterEach(async () => {
     await app.close()
-    database.close()
   })
+
+  afterAll(async () => testDatabase.close())
 
   it('completes a LOW risk review while enforcing roles and self-review', async () => {
     const alice = await sessionCookie(USER_IDS.alice)
@@ -171,10 +185,10 @@ describe('ReviewFlow core API', () => {
     })
     expect(conflict.statusCode).toBe(409)
 
-    const count = database
-      .prepare('SELECT count(*) AS count FROM contents')
-      .get() as unknown as { count: number }
-    expect(count.count).toBe(1)
+    const count = await database.query<{ count: number }>(
+      'SELECT count(*)::int AS count FROM contents',
+    )
+    expect(count.rows[0].count).toBe(1)
   })
 
   it('allows only one terminal result when approval and rejection race', async () => {
@@ -198,11 +212,9 @@ describe('ReviewFlow core API', () => {
   })
 
   it('returns one identity-scoped workspace with deduplicated flow queues', async () => {
-    database
-      .prepare(`
-        INSERT INTO user_roles (user_id, role) VALUES (?, 'SUBMITTER')
-      `)
-      .run(USER_IDS.bob)
+    await database.query(`
+      INSERT INTO user_roles (user_id, role) VALUES ($1, 'SUBMITTER')
+    `, [USER_IDS.bob])
     const alice = await sessionCookie(USER_IDS.alice)
     const bob = await sessionCookie(USER_IDS.bob)
     const mine = await createContent(alice, 'Alice draft', 'Body', 'LOW')
@@ -502,13 +514,19 @@ describe('ReviewFlow core API', () => {
   it('rolls back snapshot, round and idempotency when submission fails mid-transaction', async () => {
     const alice = await sessionCookie(USER_IDS.alice)
     const draft = await createContent(alice, 'Atomic submit', 'Body', 'LOW')
-    database.exec(`
+    await database.query(`
+      CREATE OR REPLACE FUNCTION fail_submission_update()
+      RETURNS trigger LANGUAGE plpgsql AS $$
+      BEGIN
+        IF NEW.status = 'IN_REVIEW' THEN
+          RAISE EXCEPTION 'injected submission failure';
+        END IF;
+        RETURN NEW;
+      END;
+      $$;
       CREATE TRIGGER inject_submission_failure
       BEFORE UPDATE OF status ON contents
-      WHEN NEW.status = 'IN_REVIEW'
-      BEGIN
-        SELECT RAISE(ABORT, 'injected submission failure');
-      END;
+      FOR EACH ROW EXECUTE FUNCTION fail_submission_update();
     `)
     const key = randomUUID()
     const request = {
@@ -520,40 +538,41 @@ describe('ReviewFlow core API', () => {
 
     const failed = await app.inject(request)
     expect(failed.statusCode).toBe(500)
-    const facts = database
-      .prepare(`
+    const facts = await database.query<{
+      revisions: number
+      rounds: number
+      idempotency: number
+      status: string
+    }>(`
         SELECT
-          (SELECT count(*) FROM content_revisions) AS revisions,
-          (SELECT count(*) FROM review_rounds) AS rounds,
+          (SELECT count(*)::int FROM content_revisions) AS revisions,
+          (SELECT count(*)::int FROM review_rounds) AS rounds,
           (
-            SELECT count(*) FROM idempotency_requests
+            SELECT count(*)::int FROM idempotency_requests
             WHERE operation LIKE 'SUBMIT_CONTENT:%'
           ) AS idempotency,
-          (SELECT status FROM contents WHERE id = ?) AS status
-      `)
-      .get(draft.content.id) as unknown as {
-        revisions: number
-        rounds: number
-        idempotency: number
-        status: string
-      }
-    expect(facts).toEqual({
+          (SELECT status FROM contents WHERE id = $1) AS status
+      `, [draft.content.id])
+    expect(facts.rows[0]).toEqual({
       revisions: 0,
       rounds: 0,
       idempotency: 0,
       status: 'DRAFT',
     })
 
-    database.exec('DROP TRIGGER inject_submission_failure')
+    await database.query(`
+      DROP TRIGGER inject_submission_failure ON contents;
+      DROP FUNCTION fail_submission_update();
+    `)
     const retry = await app.inject(request)
     expect(retry.statusCode).toBe(201)
     expect(retry.headers['idempotency-replayed']).toBe('false')
   })
 
   it('stops persistent growth when public demo capacity is exhausted', async () => {
-    const limitedDatabase = createDatabase(':memory:')
     const limitedApp = await buildApp({
-      database: limitedDatabase,
+      pool: database,
+      migrate: false,
       sessionSecret: 'limited-session-secret-with-enough-length',
       capacityLimits: {
         maxUsers: 5,
@@ -638,48 +657,44 @@ describe('ReviewFlow core API', () => {
       expect(userBlocked.statusCode).toBe(507)
       expect(userBlocked.json().error.code).toBe('CAPACITY_LIMIT_REACHED')
 
-      const facts = limitedDatabase.prepare(`
+      const facts = await database.query<{
+        contents: number
+        revisions: number
+        rounds: number
+        decisions: number
+        users: number
+      }>(`
         SELECT
-          (SELECT count(*) FROM contents) AS contents,
-          (SELECT count(*) FROM content_revisions) AS revisions,
-          (SELECT count(*) FROM review_rounds) AS rounds,
-          (SELECT count(*) FROM review_decisions) AS decisions,
-          (SELECT count(*) FROM users) AS users
-      `).get()
-      expect(facts).toEqual({
+          (SELECT count(*)::int FROM contents) AS contents,
+          (SELECT count(*)::int FROM content_revisions) AS revisions,
+          (SELECT count(*)::int FROM review_rounds) AS rounds,
+          (SELECT count(*)::int FROM review_decisions) AS decisions,
+          (SELECT count(*)::int FROM users) AS users
+      `)
+      expect(facts.rows[0]).toEqual({
         contents: 1,
         revisions: 1,
         rounds: 1,
         decisions: 1,
         users: 5,
       })
-      const pageSize = limitedDatabase.prepare('PRAGMA page_size').get() as {
-        page_size: number
-      }
-      const maxPages = limitedDatabase.prepare('PRAGMA max_page_count').get() as {
-        max_page_count: number
-      }
-      const autoCheckpoint = limitedDatabase
-        .prepare('PRAGMA wal_autocheckpoint')
-        .get() as { wal_autocheckpoint: number }
-      const journalLimit = limitedDatabase
-        .prepare('PRAGMA journal_size_limit')
-        .get() as { journal_size_limit: number }
-      expect(maxPages.max_page_count * pageSize.page_size).toBeLessThanOrEqual(
-        defaultCapacityLimits.maxDatabaseBytes,
-      )
-      expect(autoCheckpoint.wal_autocheckpoint).toBe(256)
-      expect(journalLimit.journal_size_limit).toBeLessThanOrEqual(8 * 1024 * 1024)
+      const counters = await database.query<{ resource: string; used: number }>(`
+        SELECT resource, used::int FROM capacity_counters ORDER BY resource
+      `)
+      expect(counters.rows).toEqual([
+        { resource: 'contents', used: 1 },
+        { resource: 'idempotency', used: 4 },
+        { resource: 'users', used: 5 },
+      ])
     } finally {
       await limitedApp.close()
-      limitedDatabase.close()
     }
   })
 
   it('rate limits public writes before they can consume persistent capacity', async () => {
-    const limitedDatabase = createDatabase(':memory:')
     const limitedApp = await buildApp({
-      database: limitedDatabase,
+      pool: database,
+      migrate: false,
       sessionSecret: 'rate-limit-session-secret-with-enough-length',
       writeRateLimitMax: 2,
     })
@@ -727,22 +742,21 @@ describe('ReviewFlow core API', () => {
       expect(blocked.statusCode).toBe(429)
       expect(blocked.json().error.code).toBe('RATE_LIMITED')
 
-      const facts = limitedDatabase.prepare(`
+      const facts = await database.query<{ contents: number; idempotency: number }>(`
         SELECT
-          (SELECT count(*) FROM contents) AS contents,
-          (SELECT count(*) FROM idempotency_requests) AS idempotency
-      `).get()
-      expect(facts).toEqual({ contents: 1, idempotency: 1 })
+          (SELECT count(*)::int FROM contents) AS contents,
+          (SELECT count(*)::int FROM idempotency_requests) AS idempotency
+      `)
+      expect(facts.rows[0]).toEqual({ contents: 1, idempotency: 1 })
     } finally {
       await limitedApp.close()
-      limitedDatabase.close()
     }
   })
 
   it('bounds idempotency storage while allowing expired records to be reclaimed', async () => {
-    const limitedDatabase = createDatabase(':memory:')
     const limitedApp = await buildApp({
-      database: limitedDatabase,
+      pool: database,
+      migrate: false,
       sessionSecret: 'idempotency-cap-session-secret-with-enough-length',
       capacityLimits: {
         maxIdempotencyRecords: 1,
@@ -751,12 +765,19 @@ describe('ReviewFlow core API', () => {
     })
 
     try {
-      limitedDatabase.prepare(`
+      await database.query(`
         INSERT INTO idempotency_requests (
           actor_id, operation, idempotency_key, request_hash,
           status_code, response_body, created_at
-        ) VALUES (?, 'OLD_OPERATION', 'old-idempotency-key', 'hash', 200, '{}', ?)
-      `).run(USER_IDS.alice, new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString())
+        ) VALUES ($1, 'OLD_OPERATION', 'old-idempotency-key', $2, 200, '{}'::jsonb, $3)
+      `, [
+        USER_IDS.alice,
+        '0'.repeat(64),
+        new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
+      ])
+      await database.query(`
+        UPDATE capacity_counters SET used = 1 WHERE resource = 'idempotency'
+      `)
 
       const created = await limitedApp.inject({
         method: 'POST',
@@ -779,15 +800,14 @@ describe('ReviewFlow core API', () => {
       })
       expect(blocked.statusCode).toBe(507)
 
-      const facts = limitedDatabase.prepare(`
+      const facts = await database.query<{ contents: number; idempotency: number }>(`
         SELECT
-          (SELECT count(*) FROM contents) AS contents,
-          (SELECT count(*) FROM idempotency_requests) AS idempotency
-      `).get()
-      expect(facts).toEqual({ contents: 1, idempotency: 1 })
+          (SELECT count(*)::int FROM contents) AS contents,
+          (SELECT count(*)::int FROM idempotency_requests) AS idempotency
+      `)
+      expect(facts.rows[0]).toEqual({ contents: 1, idempotency: 1 })
     } finally {
       await limitedApp.close()
-      limitedDatabase.close()
     }
   })
 
