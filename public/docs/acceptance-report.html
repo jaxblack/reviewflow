@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="ReviewFlow MVP 验收报告" />
+    <link rel="icon" type="image/svg+xml" href="../favicon.svg" />
+    <link rel="stylesheet" href="./assets/docs.css" />
+    <title>验收报告 · ReviewFlow</title>
+  </head>
+  <body>
+    <a class="skip-link" href="#main">跳至正文</a>
+    <header class="doc-topbar">
+      <a class="doc-brand" href="./">
+        <img src="../favicon.svg" alt="" />
+        <span><strong>ReviewFlow</strong><small>Acceptance report</small></span>
+      </a>
+      <nav class="doc-actions" aria-label="页面操作">
+        <a href="./test-report.html">测试证据</a>
+        <a class="primary" href="../">返回工作台</a>
+      </nav>
+    </header>
+    <div class="doc-layout">
+      <aside class="doc-sidebar">
+        <nav aria-label="文档导航">
+          <span class="nav-label">Documentation</span>
+          <a href="./">文档中心</a>
+          <a href="./design.html">系统设计</a>
+          <a href="./test-report.html">测试报告</a>
+          <a aria-current="page" href="./acceptance-report.html">验收报告</a>
+          <a href="./operations.html">部署运行</a>
+        </nav>
+      </aside>
+      <main id="main" class="doc-main">
+        <article class="doc-article">
+          <header class="page-header">
+            <p class="kicker">MVP acceptance / 2026-09-17</p>
+            <h1>验收报告</h1>
+            <p class="lead">ReviewFlow 已完成单实例 MVP 的核心业务闭环：服务端身份、内容提交、分级审核、拒绝重提、不可变历史、幂等和唯一终态均可运行并具有自动化证据。</p>
+            <div class="page-meta">
+              <span><strong>验收结论</strong> <span class="status pass">通过</span></span>
+              <span><strong>功能基线</strong> a7b2181</span>
+              <span><strong>范围</strong> 单实例 SQLite MVP</span>
+            </div>
+          </header>
+
+          <div class="metric-strip" aria-label="验收结果摘要">
+            <div class="metric"><strong>18/18</strong><span>核心要求</span></div>
+            <div class="metric"><strong>48</strong><span>线上样例</span></div>
+            <div class="metric"><strong>6/6</strong><span>自动化测试</span></div>
+            <div class="metric"><strong>PASS</strong><span>发布结论</span></div>
+          </div>
+
+          <section class="doc-section">
+            <p class="eyebrow">01 / Decision</p>
+            <h2>验收结论</h2>
+            <div class="callout success"><strong>通过：</strong>当前版本满足已定义的核心业务要求，可用于流程演示、架构评审和单机内部试用。通过结论不包含多实例高可用、真实组织登录、通知、SLA、删除、撤回和申诉。</div>
+            <div class="table-wrap">
+              <table>
+                <thead><tr><th>交付物</th><th>位置</th><th>状态</th></tr></thead>
+                <tbody>
+                  <tr><td>在线系统</td><td><a href="../">https://qlili.com/reviewflow/</a></td><td><span class="status pass">ONLINE</span></td></tr>
+                  <tr><td>公开代码库</td><td><a href="https://github.com/jaxblack/reviewflow">github.com/jaxblack/reviewflow</a></td><td><span class="status pass">PUBLIC</span></td></tr>
+                  <tr><td>系统设计</td><td><a href="./design.html">design.html</a></td><td><span class="status pass">READY</span></td></tr>
+                  <tr><td>测试报告</td><td><a href="./test-report.html">test-report.html</a></td><td><span class="status pass">PASS</span></td></tr>
+                  <tr><td>部署运行</td><td><a href="./operations.html">operations.html</a></td><td><span class="status pass">READY</span></td></tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
+
+          <section class="doc-section">
+            <p class="eyebrow">02 / Functional acceptance</p>
+            <h2>核心功能验收</h2>
+            <div class="table-wrap">
+              <table>
+                <thead><tr><th>ID</th><th>要求</th><th>实现证据</th><th>结果</th></tr></thead>
+                <tbody>
+                  <tr><td>AC-F01</td><td>提交人创建、编辑和查看自己的内容</td><td>我的内容视图、创建与编辑 API</td><td><span class="status pass">PASS</span></td></tr>
+                  <tr><td>AC-F02</td><td>DRAFT、REJECTED 可编辑</td><td>服务端状态校验与 capability</td><td><span class="status pass">PASS</span></td></tr>
+                  <tr><td>AC-F03</td><td>IN_REVIEW、APPROVED 不可编辑</td><td>非法状态返回 409，按钮不展示</td><td><span class="status pass">PASS</span></td></tr>
+                  <tr><td>AC-F04</td><td>每次提交创建新审核轮次</td><td>revision + round 同事务新增</td><td><span class="status pass">PASS</span></td></tr>
+                  <tr><td>AC-F05</td><td>LOW 一位审核人通过</td><td>T-01 与线上 1/1 案例</td><td><span class="status pass">PASS</span></td></tr>
+                  <tr><td>AC-F06</td><td>HIGH 两位不同审核人通过</td><td>T-02 与线上 2/2 案例</td><td><span class="status pass">PASS</span></td></tr>
+                  <tr><td>AC-F07</td><td>任意审核人拒绝结束当前轮次</td><td>HIGH 先通过后拒绝案例</td><td><span class="status pass">PASS</span></td></tr>
+                  <tr><td>AC-F08</td><td>拒绝理由非空，通过意见可选</td><td>Zod、服务层、数据库 CHECK</td><td><span class="status pass">PASS</span></td></tr>
+                  <tr><td>AC-F09</td><td>作者不能审核自己创建的内容</td><td>T-01 服务端拒绝，自审记录为 0</td><td><span class="status pass">PASS</span></td></tr>
+                  <tr><td>AC-F10</td><td>拒绝后修改并重提，旧轮不计票</td><td>T-02 与两轮不同快照案例</td><td><span class="status pass">PASS</span></td></tr>
+                  <tr><td>AC-F11</td><td>我的内容、待我审核、详情进度、完整历史</td><td>角色视图、详情页和审核历史</td><td><span class="status pass">PASS</span></td></tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
+
+          <section class="doc-section">
+            <p class="eyebrow">03 / Consistency acceptance</p>
+            <h2>一致性验收</h2>
+            <div class="table-wrap">
+              <table>
+                <thead><tr><th>ID</th><th>要求</th><th>实现证据</th><th>结果</th></tr></thead>
+                <tbody>
+                  <tr><td>AC-C01</td><td>身份由服务端会话确定</td><td>签名 HttpOnly Cookie；写 DTO 不含 actor 字段</td><td><span class="status pass">PASS</span></td></tr>
+                  <tr><td>AC-C02</td><td>权限和状态由服务端校验</td><td>角色、作者、状态和版本均在事务命令内检查</td><td><span class="status pass">PASS</span></td></tr>
+                  <tr><td>AC-C03</td><td>同一审核人同一轮只能决定一次</td><td>UNIQUE(round_id, reviewer_id) + 服务检查</td><td><span class="status pass">PASS</span></td></tr>
+                  <tr><td>AC-C04</td><td>重试不能产生重复记录</td><td>Idempotency-Key、请求摘要与 T-03</td><td><span class="status pass">PASS</span></td></tr>
+                  <tr><td>AC-C05</td><td>并发终态保持唯一</td><td>BEGIN IMMEDIATE 串行写入、终态 CAS 与 T-04</td><td><span class="status pass">PASS</span></td></tr>
+                  <tr><td>AC-C06</td><td>历史展示当时审核内容</td><td>每轮引用不可变 content_revision</td><td><span class="status pass">PASS</span></td></tr>
+                  <tr><td>AC-C07</td><td>状态和审核历史原子提交</td><td>decision、round、content、idempotency 同事务</td><td><span class="status pass">PASS</span></td></tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
+
+          <section class="doc-section">
+            <p class="eyebrow">04 / Operational acceptance</p>
+            <h2>运行验收</h2>
+            <ul class="check-list">
+              <li><span>线上 HTTPS 入口返回 200，不要求额外密码。</span></li>
+              <li><span>应用只监听服务器回环地址，由 Caddy 统一代理。</span></li>
+              <li><span>用户级 systemd 服务处于 active、enabled，异常退出自动重启。</span></li>
+              <li><span>SQLite 数据位于共享持久目录，不随 release 切换丢失。</span></li>
+              <li><span>48 条 demo 数据可查询，状态和风险分布符合数据契约。</span></li>
+              <li><span>桌面与手机视口无横向溢出，浏览器控制台无错误。</span></li>
+            </ul>
+          </section>
+
+          <section class="doc-section">
+            <p class="eyebrow">05 / Residual risk</p>
+            <h2>限制与残余风险</h2>
+            <div class="callout warning"><strong>公开演示环境：</strong>任何访问者都可以切换预置身份并修改数据，不得录入真实、敏感或受监管内容。必要时可从固定种子恢复演示数据。</div>
+            <div class="table-wrap">
+              <table>
+                <thead><tr><th>风险</th><th>当前控制</th><th>生产化要求</th></tr></thead>
+                <tbody>
+                  <tr><td>单实例故障</td><td>systemd 自动重启、SQLite 持久目录</td><td>迁移 PostgreSQL、多副本与监控告警</td></tr>
+                  <tr><td>公开身份切换</td><td>只允许演示数据</td><td>接入真实组织身份与权限同步</td></tr>
+                  <tr><td>并发证明范围</td><td>SQLite 写锁与进程内竞争测试</td><td>独立连接屏障、故障注入和数据库事实断言</td></tr>
+                  <tr><td>备份恢复</td><td>发布前人工备份</td><td>定时备份、恢复演练和保留策略</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
+
+          <footer class="doc-footer">
+            <span>ReviewFlow MVP Acceptance</span>
+            <span>结论：通过 · 2026-09-17</span>
+          </footer>
+        </article>
+      </main>
+    </div>
+  </body>
+</html>

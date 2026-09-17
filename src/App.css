@@ -77,6 +77,32 @@
   gap: 14px;
 }
 
+.docs-entry {
+  min-height: 34px;
+  padding: 7px 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--accent-dark);
+  background: var(--accent-soft);
+  border: 1px solid #c9e3dd;
+  border-radius: 5px;
+  font-size: 12px;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.docs-entry:hover {
+  color: #fff;
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.docs-entry svg {
+  width: 16px;
+  height: 16px;
+}
+
 .role-list {
   display: flex;
   gap: 5px;
@@ -1048,8 +1074,15 @@ textarea:hover {
   }
 
   .brand div span,
-  .role-list {
+  .role-list,
+  .docs-entry span {
     display: none;
+  }
+
+  .docs-entry {
+    width: 36px;
+    padding: 0;
+    justify-content: center;
   }
 
   .user-switch span {

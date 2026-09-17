@@ -1,0 +1,177 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="ReviewFlow 系统设计文档" />
+    <link rel="icon" type="image/svg+xml" href="../favicon.svg" />
+    <link rel="stylesheet" href="./assets/docs.css" />
+    <title>系统设计 · ReviewFlow</title>
+  </head>
+  <body>
+    <a class="skip-link" href="#main">跳至正文</a>
+    <header class="doc-topbar">
+      <a class="doc-brand" href="./">
+        <img src="../favicon.svg" alt="" />
+        <span><strong>ReviewFlow</strong><small>System design</small></span>
+      </a>
+      <nav class="doc-actions" aria-label="页面操作">
+        <a href="https://github.com/jaxblack/reviewflow/blob/main/docs/reviewflow-system-design.md">Markdown</a>
+        <a class="primary" href="../">返回工作台</a>
+      </nav>
+    </header>
+    <div class="doc-layout">
+      <aside class="doc-sidebar">
+        <nav aria-label="文档导航">
+          <span class="nav-label">Documentation</span>
+          <a href="./">文档中心</a>
+          <a aria-current="page" href="./design.html">系统设计</a>
+          <a href="./test-report.html">测试报告</a>
+          <a href="./acceptance-report.html">验收报告</a>
+          <a href="./operations.html">部署运行</a>
+        </nav>
+      </aside>
+      <main id="main" class="doc-main">
+        <article class="doc-article">
+          <header class="page-header">
+            <p class="kicker">Architecture / Domain / Consistency</p>
+            <h1>系统设计</h1>
+            <p class="lead">ReviewFlow 采用模块化单体，把可编辑工作副本、不可变提交快照、审核轮次和审核决定建模为不同事实，并在一个事务内维护状态与历史一致性。</p>
+            <div class="page-meta">
+              <span><strong>实现基线</strong> a7b2181</span>
+              <span><strong>架构</strong> React + Fastify + SQLite</span>
+              <span><strong>评审状态</strong> <span class="status pass">IMPLEMENTED</span></span>
+            </div>
+          </header>
+
+          <div class="metric-strip" aria-label="系统规模">
+            <div class="metric"><strong>4</strong><span>内容状态</span></div>
+            <div class="metric"><strong>3</strong><span>叠加角色</span></div>
+            <div class="metric"><strong>2</strong><span>风险等级</span></div>
+            <div class="metric"><strong>1</strong><span>事务写入口</span></div>
+          </div>
+
+          <section class="doc-section">
+            <p class="eyebrow">01 / Context</p>
+            <h2>系统边界与架构</h2>
+            <p>当前版本面向单机演示和内部流程验证。一个 Node.js 进程同时提供 React 静态资源与 Fastify API，SQLite 文件独立于 release 目录持久化。服务端会话是唯一可信身份来源。</p>
+            <div class="flow" aria-label="请求处理架构">
+              <div class="flow-node">浏览器<small>React SPA</small></div>
+              <div class="flow-arrow">→</div>
+              <div class="flow-node emphasis">Fastify API<small>身份、权限、状态机</small></div>
+              <div class="flow-arrow">→</div>
+              <div class="flow-node">事务服务<small>BEGIN IMMEDIATE</small></div>
+              <div class="flow-arrow">→</div>
+              <div class="flow-node">SQLite WAL<small>单实例持久化</small></div>
+            </div>
+            <div class="callout warning"><strong>部署约束：</strong>SQLite 版本只能运行一个应用实例。需要多实例、滚动发布或更高并发时，先迁移 PostgreSQL 并用行锁协调审核终态。</div>
+          </section>
+
+          <section class="doc-section">
+            <p class="eyebrow">02 / Domain</p>
+            <h2>领域模型</h2>
+            <div class="table-wrap">
+              <table>
+                <thead><tr><th>实体</th><th>职责</th><th>可变性</th><th>关键约束</th></tr></thead>
+                <tbody>
+                  <tr><td><code>contents</code></td><td>作者当前工作副本与聚合状态</td><td>DRAFT、REJECTED 可编辑</td><td>作者、状态、版本共同校验</td></tr>
+                  <tr><td><code>content_revisions</code></td><td>每次提交时的标题、正文与风险快照</td><td>只追加</td><td>content + revision_no 唯一</td></tr>
+                  <tr><td><code>review_rounds</code></td><td>隔离每次提交的审核进度和阈值</td><td>OPEN 只可进入一个终态</td><td>同一内容最多一个 OPEN 轮次</td></tr>
+                  <tr><td><code>review_decisions</code></td><td>记录审核人当时的决定与意见</td><td>只追加</td><td>round + reviewer 唯一</td></tr>
+                  <tr><td><code>idempotency_requests</code></td><td>保存写请求摘要与第一次响应</td><td>事务内创建</td><td>actor + operation + key 唯一</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <h3>为什么必须保存 revision</h3>
+            <p>被拒绝内容可以继续修改。如果历史轮次直接读取 <code>contents</code>，后续编辑会改变当时被审核的内容。每轮引用不可变 revision，保证第一轮始终展示第一轮提交时的事实。</p>
+          </section>
+
+          <section class="doc-section">
+            <p class="eyebrow">03 / State machine</p>
+            <h2>状态流转</h2>
+            <div class="flow" aria-label="内容状态主流程">
+              <div class="flow-node">DRAFT<small>可编辑</small></div>
+              <div class="flow-arrow">→</div>
+              <div class="flow-node emphasis">IN_REVIEW<small>不可编辑</small></div>
+              <div class="flow-arrow">→</div>
+              <div class="flow-node">APPROVED<small>终态</small></div>
+            </div>
+            <div class="flow" aria-label="拒绝后重新提交流程">
+              <div class="flow-node emphasis">IN_REVIEW<small>任意合法拒绝</small></div>
+              <div class="flow-arrow">→</div>
+              <div class="flow-node">REJECTED<small>可编辑</small></div>
+              <div class="flow-arrow">→</div>
+              <div class="flow-node emphasis">新一轮 IN_REVIEW<small>票数归零</small></div>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead><tr><th>风险</th><th>决定</th><th>结果</th></tr></thead>
+                <tbody>
+                  <tr><td>LOW</td><td>一位非作者 REVIEWER 通过</td><td>轮次和内容同时 APPROVED</td></tr>
+                  <tr><td>HIGH</td><td>第一位 REVIEWER 通过</td><td>保持 IN_REVIEW，进度 1/2</td></tr>
+                  <tr><td>HIGH</td><td>第二位不同 REVIEWER 通过</td><td>轮次和内容同时 APPROVED</td></tr>
+                  <tr><td>LOW / HIGH</td><td>任意合法拒绝且理由非空</td><td>轮次和内容同时 REJECTED</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
+
+          <section class="doc-section">
+            <p class="eyebrow">04 / Authorization</p>
+            <h2>身份与权限</h2>
+            <ul class="check-list">
+              <li><span>写接口只从服务端签名 Cookie 恢复当前用户，不接受客户端提供 actorId、authorId 或 reviewerId。</span></li>
+              <li><span>SUBMITTER 只能创建、编辑和提交自己的内容，并受允许状态和 expectedVersion 限制。</span></li>
+              <li><span>REVIEWER 只能审核他人内容；多角色用户也不能绕过自审限制。</span></li>
+              <li><span>ADMIN 可以读取所有内容和历史，但不会自动获得审核能力。</span></li>
+              <li><span>前端 capability 只用于展示，服务端每次写入都会重新校验角色、作者、状态和轮次。</span></li>
+            </ul>
+          </section>
+
+          <section class="doc-section">
+            <p class="eyebrow">05 / Transaction</p>
+            <h2>事务、并发与幂等</h2>
+            <p>所有写命令通过 <code>BEGIN IMMEDIATE</code> 获得 SQLite 写锁。审核决定、轮次终态、内容状态、聚合版本和幂等响应在同一事务中提交或回滚。</p>
+            <pre>currentUser = getCurrentUser(request)
+BEGIN IMMEDIATE
+  claimOrReplayIdempotencyKey(currentUser, operation, key)
+  validateRoleAuthorStateAndVersion()
+  appendRevisionRoundOrDecision()
+  updateAggregateAndRoundAtomically()
+  saveIdempotentResponse()
+COMMIT</pre>
+            <div class="callout success"><strong>终态竞争：</strong>通过与拒绝同时到达时，SQLite 串行化写事务。先提交者形成唯一终态，后续请求读取到已关闭轮次并返回冲突，不写入失败方决定。</div>
+            <h3>幂等规则</h3>
+            <ul>
+              <li>相同用户、操作、Idempotency-Key 和请求摘要返回第一次响应。</li>
+              <li>相同 key 对应不同请求摘要时返回 409。</li>
+              <li>即使客户端错误地产生新 key，<code>UNIQUE(round_id, reviewer_id)</code> 仍阻止同一审核人重复决定。</li>
+            </ul>
+          </section>
+
+          <section class="doc-section">
+            <p class="eyebrow">06 / Evolution</p>
+            <h2>演进边界</h2>
+            <div class="table-wrap">
+              <table>
+                <thead><tr><th>能力</th><th>当前状态</th><th>下一步</th></tr></thead>
+                <tbody>
+                  <tr><td>单机事务</td><td><span class="status pass">READY</span> SQLite WAL</td><td>保持单实例</td></tr>
+                  <tr><td>多实例协调</td><td><span class="status partial">NOT ENABLED</span></td><td>迁移 PostgreSQL + SELECT FOR UPDATE</td></tr>
+                  <tr><td>真实身份系统</td><td><span class="status partial">OUT OF SCOPE</span></td><td>接入组织身份提供方</td></tr>
+                  <tr><td>通知与 SLA</td><td><span class="status partial">OUT OF SCOPE</span></td><td>定义事件与时限后实施</td></tr>
+                  <tr><td>删除、撤回、申诉</td><td><span class="status partial">OUT OF SCOPE</span></td><td>先补状态语义和审计要求</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
+
+          <footer class="doc-footer">
+            <span>ReviewFlow System Design</span>
+            <span>功能基线 a7b2181 · 2026-09-17</span>
+          </footer>
+        </article>
+      </main>
+    </div>
+  </body>
+</html>

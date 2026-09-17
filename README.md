@@ -2,7 +2,7 @@
 
 ReviewFlow 是一个内部内容审核系统，重点不是页面数量，而是如何把多角色权限、分级审核、多轮重提、不可变历史、请求幂等和并发终态建模为一组可验证的业务规则。
 
-[在线演示](https://qlili.com/reviewflow/) · [系统设计](docs/reviewflow-system-design.md) · [技术评审](docs/reviewflow-technical-review.md) · [测试方案](docs/reviewflow-test-plan.md)
+[在线演示](https://qlili.com/reviewflow/) · [HTML 文档中心](https://qlili.com/reviewflow/docs/) · [系统设计](docs/reviewflow-system-design.md) · [测试方案](docs/reviewflow-test-plan.md)
 
 > 在线环境是公开 Demo。任何访问者都可以切换预置用户并修改演示数据，请勿录入真实或敏感内容。
 
@@ -258,6 +258,7 @@ reviewflow/
 │   ├── api.ts           # 前端 API 与幂等请求封装
 │   └── App.tsx          # 用户切换、队列和详情编排
 ├── server/              # Fastify API、SQLite schema、事务和测试
+├── public/docs/         # 在线 HTML 设计、测试、验收与运行文档
 ├── docs/                # 架构、设计、评审、测试和演示文档
 ├── deploy/              # systemd、Caddy、Nginx 与腾讯云部署说明
 ├── artifacts/           # 桌面与移动端验证截图
@@ -269,6 +270,7 @@ reviewflow/
 
 | 文档 | 定位 |
 | --- | --- |
+| [HTML 文档中心](https://qlili.com/reviewflow/docs/) | 在线浏览系统设计、测试报告、验收报告和部署运行说明 |
 | [当前实现架构](docs/architecture.md) | SQLite MVP 的状态机、数据模型、一致性和部署边界 |
 | [完整系统设计](docs/reviewflow-system-design.md) | PostgreSQL 目标模型、DDL、API、权限、事务与实施顺序 |
 | [技术评审方案](docs/reviewflow-technical-review.md) | 评审门禁、检查清单、风险分级、关键链路和结论模板 |

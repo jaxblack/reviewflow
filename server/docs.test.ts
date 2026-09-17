@@ -1,0 +1,41 @@
+import { existsSync, readFileSync } from 'node:fs'
+import { dirname, resolve } from 'node:path'
+import { describe, expect, it } from 'vitest'
+
+const docsRoot = resolve(process.cwd(), 'public/docs')
+const pages = [
+  'index.html',
+  'design.html',
+  'test-report.html',
+  'acceptance-report.html',
+  'operations.html',
+]
+
+describe('HTML documentation', () => {
+  it.each(pages)('%s has a complete document structure', (page) => {
+    const source = readFileSync(resolve(docsRoot, page), 'utf8')
+
+    expect(source).toMatch(/^<!doctype html>/i)
+    expect(source).toContain('<html lang="zh-CN">')
+    expect(source).toContain('name="viewport"')
+    expect(source).toMatch(/<title>[^<]+<\/title>/)
+    expect(source.match(/<h1(?:\s[^>]*)?>/g)).toHaveLength(1)
+    expect(source.endsWith('\n')).toBe(true)
+  })
+
+  it('keeps every local document asset and link resolvable', () => {
+    for (const page of pages) {
+      const pagePath = resolve(docsRoot, page)
+      const source = readFileSync(pagePath, 'utf8')
+      const references = source.matchAll(/(?:href|src)="([^"]+)"/g)
+
+      for (const [, reference] of references) {
+        if (/^(?:https?:|#)/.test(reference)) continue
+        const target = reference.split(/[?#]/, 1)[0]
+        expect(existsSync(resolve(dirname(pagePath), target)), `${page}: ${reference}`).toBe(
+          true,
+        )
+      }
+    }
+  })
+})

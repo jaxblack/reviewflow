@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="ReviewFlow 部署与运行说明" />
+    <link rel="icon" type="image/svg+xml" href="../favicon.svg" />
+    <link rel="stylesheet" href="./assets/docs.css" />
+    <title>部署运行 · ReviewFlow</title>
+  </head>
+  <body>
+    <a class="skip-link" href="#main">跳至正文</a>
+    <header class="doc-topbar">
+      <a class="doc-brand" href="./">
+        <img src="../favicon.svg" alt="" />
+        <span><strong>ReviewFlow</strong><small>Operations</small></span>
+      </a>
+      <nav class="doc-actions" aria-label="页面操作">
+        <a href="https://github.com/jaxblack/reviewflow/blob/main/deploy/tencent-cloud.md">部署原文</a>
+        <a class="primary" href="../">返回工作台</a>
+      </nav>
+    </header>
+    <div class="doc-layout">
+      <aside class="doc-sidebar">
+        <nav aria-label="文档导航">
+          <span class="nav-label">Documentation</span>
+          <a href="./">文档中心</a>
+          <a href="./design.html">系统设计</a>
+          <a href="./test-report.html">测试报告</a>
+          <a href="./acceptance-report.html">验收报告</a>
+          <a aria-current="page" href="./operations.html">部署运行</a>
+        </nav>
+      </aside>
+      <main id="main" class="doc-main">
+        <article class="doc-article">
+          <header class="page-header">
+            <p class="kicker">Deployment / Runtime / Recovery</p>
+            <h1>部署与运行</h1>
+            <p class="lead">线上版本采用 release 目录、共享数据目录、用户级 systemd 与 Caddy HTTPS 代理。应用只绑定回环地址，发布切换不移动 SQLite 数据。</p>
+            <div class="page-meta">
+              <span><strong>入口</strong> qlili.com/reviewflow/</span>
+              <span><strong>运行模式</strong> 单实例</span>
+              <span><strong>服务状态</strong> <span class="status pass">ACTIVE</span></span>
+            </div>
+          </header>
+
+          <div class="metric-strip" aria-label="运行状态">
+            <div class="metric"><strong>HTTPS</strong><span>Caddy 入口</span></div>
+            <div class="metric"><strong>3000</strong><span>回环监听端口</span></div>
+            <div class="metric"><strong>WAL</strong><span>SQLite 模式</span></div>
+            <div class="metric"><strong>1</strong><span>应用实例</span></div>
+          </div>
+
+          <section class="doc-section">
+            <p class="eyebrow">01 / Topology</p>
+            <h2>线上拓扑</h2>
+            <div class="flow" aria-label="线上请求路径">
+              <div class="flow-node">HTTPS 客户端<small>/reviewflow/*</small></div>
+              <div class="flow-arrow">→</div>
+              <div class="flow-node emphasis">Caddy<small>TLS + 路径前缀剥离</small></div>
+              <div class="flow-arrow">→</div>
+              <div class="flow-node">Fastify<small>127.0.0.1:3000</small></div>
+              <div class="flow-arrow">→</div>
+              <div class="flow-node">SQLite<small>shared/data</small></div>
+            </div>
+            <div class="callout"><strong>公开入口：</strong>ReviewFlow 当前不启用额外密码。用户切换用于演示，任何访问者都可能改变演示数据。</div>
+          </section>
+
+          <section class="doc-section">
+            <p class="eyebrow">02 / Filesystem</p>
+            <h2>发布目录</h2>
+            <pre>/home/ubuntu/apps/reviewflow/
+├── current -> releases/&lt;release-id&gt;
+├── releases/
+│   ├── 20260917-a7b2181/
+│   └── ...
+└── shared/
+    ├── data/reviewflow.db
+    ├── backups/
+    └── reviewflow.env</pre>
+            <ul>
+              <li><code>releases</code> 保存不可变应用版本，构建通过后才允许切换。</li>
+              <li><code>current</code> 使用临时软链和原子 rename 切换。</li>
+              <li><code>shared/data</code> 独立持久化，不随代码发布替换。</li>
+              <li><code>reviewflow.env</code> 权限为 600，不进入代码库。</li>
+            </ul>
+          </section>
+
+          <section class="doc-section">
+            <p class="eyebrow">03 / Release</p>
+            <h2>发布门禁与切换</h2>
+            <ol>
+              <li>确认本地 <code>main</code> 与 GitHub 同步、工作区干净。</li>
+              <li>执行 <code>npm run check</code>，确保 lint、测试和生产构建通过。</li>
+              <li>上传到新的 release 目录，排除 .git、node_modules、构建产物、本地数据库和环境文件。</li>
+              <li>在服务器 Node 22 环境再次执行 <code>npm ci</code> 与 <code>npm run check</code>。</li>
+              <li>停止服务、备份数据库、原子切换 current、重新启动。</li>
+              <li>使用有限重试等待健康接口，随后验证公网 HTML、API 和静态资源。</li>
+            </ol>
+            <pre>systemctl --user status reviewflow --no-pager
+curl --fail http://127.0.0.1:3000/api/health
+curl --fail https://qlili.com/reviewflow/api/health</pre>
+          </section>
+
+          <section class="doc-section">
+            <p class="eyebrow">04 / Configuration</p>
+            <h2>运行配置</h2>
+            <div class="table-wrap">
+              <table>
+                <thead><tr><th>变量</th><th>线上设置</th><th>用途</th></tr></thead>
+                <tbody>
+                  <tr><td><code>NODE_ENV</code></td><td>production</td><td>启用生产静态资源与安全配置</td></tr>
+                  <tr><td><code>HOST</code></td><td>127.0.0.1</td><td>阻止绕过 Caddy 直接访问应用</td></tr>
+                  <tr><td><code>PORT</code></td><td>3000</td><td>Fastify 监听端口</td></tr>
+                  <tr><td><code>DATA_DIR</code></td><td>shared/data</td><td>SQLite 持久化目录</td></tr>
+                  <tr><td><code>COOKIE_SECURE</code></td><td>true</td><td>Cookie 仅通过 HTTPS 传输</td></tr>
+                  <tr><td><code>COOKIE_PATH</code></td><td>/reviewflow</td><td>限制会话 Cookie 的 URL 范围</td></tr>
+                  <tr><td><code>SESSION_SECRET</code></td><td>远端环境文件</td><td>签名会话，不得写入日志或代码库</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
+
+          <section class="doc-section">
+            <p class="eyebrow">05 / Data</p>
+            <h2>数据、种子与备份</h2>
+            <h3>演示数据</h3>
+            <p>种子脚本使用固定 <code>demo-*</code> ID 和 <code>INSERT OR IGNORE</code>，重复执行不会覆盖访问者已经修改的内容，也不会产生重复记录。</p>
+            <pre>npm run build
+DATA_DIR=/path/to/shared/data npm run seed:demo</pre>
+            <h3>备份原则</h3>
+            <ul>
+              <li>发布前停止应用，再复制 db、wal 和 shm 文件，避免不一致副本。</li>
+              <li>备份目录使用 UTC 时间戳并保留原文件权限。</li>
+              <li>恢复前先保留当前数据库副本，再切换备份并启动服务。</li>
+              <li>长期运行应增加定时备份、保留周期和恢复演练。</li>
+            </ul>
+          </section>
+
+          <section class="doc-section">
+            <p class="eyebrow">06 / Recovery</p>
+            <h2>回滚与排障</h2>
+            <div class="table-wrap">
+              <table>
+                <thead><tr><th>现象</th><th>检查</th><th>处理</th></tr></thead>
+                <tbody>
+                  <tr><td>健康接口失败</td><td>用户服务状态与 journal</td><td>回滚 current 到上一 release 并重启</td></tr>
+                  <tr><td>页面 404</td><td>Caddy handle_path 与 Vite base</td><td>确认资源路径以 /reviewflow/assets 开头</td></tr>
+                  <tr><td>写入被锁</td><td>是否启动多个实例</td><td>保持单实例，检查未退出进程</td></tr>
+                  <tr><td>会话无法切换</td><td>Cookie Secure、Path 和签名密钥</td><td>核对 HTTPS 与环境配置，不输出密钥</td></tr>
+                  <tr><td>演示数据被改动</td><td>demo-* 数量与历史</td><td>从备份恢复或清理固定 ID 后重新播种</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
+
+          <footer class="doc-footer">
+            <span>ReviewFlow Operations Guide</span>
+            <span>单实例运行基线 · 2026-09-17</span>
+          </footer>
+        </article>
+      </main>
+    </div>
+  </body>
+</html>

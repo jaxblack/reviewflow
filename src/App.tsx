@@ -1,4 +1,5 @@
 import {
+  BookOpen,
   ClipboardCheck,
   Clock3,
   Files,
@@ -260,6 +261,10 @@ function App() {
 
         {me && (
           <div className="identity-area">
+            <a className="docs-entry" href={`${import.meta.env.BASE_URL}docs/`}>
+              <BookOpen aria-hidden="true" />
+              <span>文档</span>
+            </a>
             <div className="role-list" aria-label="当前角色">
               {me.roles.map((role) => (
                 <span key={role}>{role}</span>
