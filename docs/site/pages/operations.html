@@ -36,7 +36,7 @@
           <header class="page-header">
             <p class="kicker">Deployment / Runtime / Recovery</p>
             <h1>部署与运行</h1>
-            <p class="lead">线上版本采用 release 目录、共享数据目录、用户级 systemd 与 Caddy HTTPS 代理。应用只绑定回环地址，发布切换不移动 SQLite 数据。</p>
+            <p class="lead">线上版本由 GitHub Actions 在 main CI 全部通过后自动发布，采用不可变 release、共享数据目录、用户级 systemd 与 Caddy HTTPS 代理。应用只绑定回环地址，发布切换不移动 SQLite 数据。</p>
             <div class="page-meta">
               <span><strong>入口</strong> qlili.com/reviewflow/</span>
               <span><strong>运行模式</strong> 单实例</span>
@@ -90,12 +90,12 @@
             <p class="eyebrow">03 / Release</p>
             <h2>发布门禁与切换</h2>
             <ol>
-              <li>确认本地 <code>main</code> 与 GitHub 同步、工作区干净。</li>
-              <li>执行 <code>npm run check</code>，确保 lint、测试和生产构建通过。</li>
-              <li>上传到新的 release 目录，排除 .git、node_modules、构建产物、本地数据库和环境文件。</li>
-              <li>在服务器 Node 22 环境再次执行 <code>npm ci</code> 与 <code>npm run check</code>。</li>
-              <li>停止服务、备份数据库、原子切换 current、重新启动。</li>
-              <li>使用有限重试等待健康接口，随后验证公网 HTML、API 和静态资源。</li>
+              <li>GitHub Actions 对 main push 执行 <code>npm ci</code>、<code>npm run check</code> 和生产容器健康检查。</li>
+              <li>仅当前仓库 main 的成功 CI 可触发 production workflow；fork、PR 和其他分支不会获得生产 secrets。</li>
+              <li>CD 构建不可变 release 压缩包，通过专用 SSH 密钥上传并以 commit SHA 创建 release 目录。</li>
+              <li>服务器安装锁定依赖，原子切换 <code>current</code>，重启用户级 systemd 单实例。</li>
+              <li>有限重试验证本机健康接口；失败时安装脚本恢复上一软链并重启旧版本。</li>
+              <li>公开 Demo 不设置人工审批；接入真实内容前必须重新启用 production required reviewers。</li>
             </ol>
             <pre>systemctl --user status reviewflow --no-pager
 curl --fail http://127.0.0.1:3000/api/health

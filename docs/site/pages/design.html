@@ -54,7 +54,7 @@
           <section class="doc-section">
             <p class="eyebrow">01 / Context</p>
             <h2>系统边界与架构</h2>
-            <p>当前版本面向单机演示和内部流程验证。一个 Node.js 进程同时提供 React 静态资源与 Fastify API，SQLite 文件独立于 release 目录持久化。服务端会话是唯一可信身份来源。</p>
+            <p>当前版本面向单机演示和内部流程验证。一个 Node.js 进程同时提供企业级三栏工作台、统一语义队列、全生命周期详情、ADMIN 用户角色管理与 Fastify API，SQLite 文件独立于 release 目录持久化。服务端会话是唯一可信身份来源。</p>
             <div class="flow" aria-label="请求处理架构">
               <div class="flow-node">浏览器<small>React SPA</small></div>
               <div class="flow-arrow">→</div>
@@ -65,6 +65,19 @@
               <div class="flow-node">SQLite WAL<small>单实例持久化</small></div>
             </div>
             <div class="callout warning"><strong>部署约束：</strong>SQLite 版本只能运行一个应用实例。需要多实例、滚动发布或更高并发时，先迁移 PostgreSQL 并用行锁协调审核终态。</div>
+          </section>
+
+          <section class="doc-section">
+            <p class="eyebrow">01B / PC workbench</p>
+            <h2>企业级工作台信息架构</h2>
+            <p>PC 页面采用固定应用导航、唯一请求清单和审计详情三栏结构。语义队列只是对同一工作区读模型的过滤视角，同一内容不会因同时属于“待我审核”和“我已参与”等分类而重复渲染。</p>
+            <ul class="check-list">
+              <li><span>默认按高风险待办、普通待办、其他审核中、已拒绝、草稿和已通过排序，也可切换更新时间或标题排序。</span></li>
+              <li><span>支持角色队列聚焦、状态/风险组合筛选、快捷条件、<code>⌘K</code> 搜索与方向键切换。</span></li>
+              <li><span>详情使用粘性操作栏，内容与当前进度并排展示，并支持请求 ID 复制和当前授权数据的审计 JSON 导出。</span></li>
+              <li><span>ADMIN 从左侧系统导航进入权限管理抽屉，可查看角色汇总、搜索成员并编辑角色矩阵。</span></li>
+            </ul>
+            <div class="callout success"><strong>安全边界不变：</strong>排序、筛选、快捷键和成功提示只提高操作效率，所有身份、角色、状态、版本和轮次仍由服务端事务重新校验。</div>
           </section>
 
           <section class="doc-section">
@@ -123,7 +136,8 @@
               <li><span>写接口只从服务端签名 Cookie 恢复当前用户，不接受客户端提供 actorId、authorId 或 reviewerId。</span></li>
               <li><span>SUBMITTER 只能创建、编辑和提交自己的内容，并受允许状态和 expectedVersion 限制。</span></li>
               <li><span>REVIEWER 只能审核他人内容；多角色用户也不能绕过自审限制。</span></li>
-              <li><span>ADMIN 可以读取所有内容和历史，但不会自动获得审核能力。</span></li>
+              <li><span>ADMIN 可以读取所有内容和历史、创建用户并维护叠加角色，但不会自动获得审核能力。</span></li>
+              <li><span>系统禁止移除最后一位管理员，也禁止移除开放轮次仍依赖的审核能力；用户不删除，以保留审计主体。</span></li>
               <li><span>前端 capability 只用于展示，服务端每次写入都会重新校验角色、作者、状态和轮次。</span></li>
             </ul>
           </section>

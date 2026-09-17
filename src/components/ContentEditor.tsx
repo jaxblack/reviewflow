@@ -59,6 +59,11 @@ export function ContentEditor({
             <div>
               <p className="eyebrow">CONTENT</p>
               <h2 id="editor-title">{mode === 'create' ? '创建内容' : '编辑内容'}</h2>
+              <span className="dialog-description">
+                {mode === 'create'
+                  ? '先保存为草稿，确认内容后再提交审核。'
+                  : '修改只影响当前工作副本，不会改写历史快照。'}
+              </span>
             </div>
           </div>
           <button
@@ -75,7 +80,10 @@ export function ContentEditor({
 
         <div className="form-stack">
           <label>
-            <span>标题</span>
+            <span className="field-label">
+              标题
+              <small>{title.length}/200</small>
+            </span>
             <input
               value={title}
               maxLength={200}
@@ -86,7 +94,10 @@ export function ContentEditor({
           </label>
 
           <label>
-            <span>正文</span>
+            <span className="field-label">
+              正文
+              <small>{body.length.toLocaleString('zh-CN')}/50,000</small>
+            </span>
             <textarea
               value={body}
               maxLength={50_000}
@@ -129,7 +140,11 @@ export function ContentEditor({
           <button type="button" className="button secondary" disabled={busy} onClick={onClose}>
             取消
           </button>
-          <button type="submit" className="button primary" disabled={busy}>
+          <button
+            type="submit"
+            className="button primary"
+            disabled={busy || title.trim().length === 0 || body.trim().length === 0}
+          >
             <Save aria-hidden="true" />
             {busy ? '保存中…' : '保存'}
           </button>

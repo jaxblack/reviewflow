@@ -1,84 +1,99 @@
 import {
+  Activity,
   BookOpen,
-  Archive,
+  CheckCircle2,
   ClipboardCheck,
-  Clock3,
   FilePlus2,
   Files,
+  Gauge,
   History,
   Inbox,
-  LoaderCircle,
+  LayoutDashboard,
   RefreshCw,
-  Search,
   ShieldCheck,
+  TriangleAlert,
   UsersRound,
   X,
   type LucideIcon,
 } from 'lucide-react'
-import { useDeferredValue, useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { api, errorMessage } from './api'
 import './App.css'
+import { AdminUserPanel } from './components/AdminUserPanel'
 import { ContentDetail } from './components/ContentDetail'
 import { ContentEditor } from './components/ContentEditor'
-import { AdminUserPanel } from './components/AdminUserPanel'
+import {
+  WorkspaceRequestList,
+  type RiskFilter,
+  type StatusFilter,
+} from './components/WorkspaceRequestList'
 import type {
   AdminUser,
   AdminUserInput,
   ContentDetail as ContentDetailData,
   ContentInput,
-  ContentStatus,
   DecisionType,
-  Risk,
   User,
   WorkspaceItem,
   WorkspaceQueue,
+  WorkspaceScope,
+  WorkspaceSort,
 } from './types'
 
-const statusLabels = {
-  DRAFT: '草稿',
-  IN_REVIEW: '审核中',
-  APPROVED: '已通过',
-  REJECTED: '已拒绝',
-} as const
-
-const queueDefinitions: Array<{
-  key: WorkspaceQueue
+interface ScopeDefinition {
+  key: WorkspaceScope
   title: string
+  shortTitle: string
   description: string
   icon: LucideIcon
-}> = [
+}
+
+interface ViewCriteria {
+  scope: WorkspaceScope
+  query: string
+  status: StatusFilter
+  risk: RiskFilter
+  sort: WorkspaceSort
+}
+
+interface Notice {
+  id: number
+  tone: 'success' | 'error'
+  message: string
+}
+
+const queueDefinitions: Array<ScopeDefinition & { key: WorkspaceQueue }> = [
   {
     key: 'PENDING_REVIEW',
     title: '待我审核',
-    description: '当前轮次等待你的决定',
+    shortTitle: '待我审核',
+    description: '当前轮次等待你的审核决定',
     icon: Inbox,
   },
   {
     key: 'MINE',
-    title: '我发起的请求',
-    description: '从草稿到终态的全部内容',
+    title: '我的提交',
+    shortTitle: '我的提交',
+    description: '我创建的全部内容请求',
     icon: Files,
   },
   {
     key: 'REVIEWED',
     title: '我已参与',
-    description: '保留我做过决定的审核请求',
+    shortTitle: '已参与',
+    description: '我曾做出审核决定的请求',
     icon: History,
   },
   {
     key: 'ADMIN',
     title: '全部请求',
-    description: '管理员全量审计视图',
+    shortTitle: '全部请求',
+    description: '管理员可见的全量审核请求',
     icon: ClipboardCheck,
   },
 ]
 
-type StatusFilter = 'ALL' | ContentStatus
-type RiskFilter = 'ALL' | Risk
-
-const compactDateFormatter = new Intl.DateTimeFormat('zh-CN', {
-  month: '2-digit',
-  day: '2-digit',
+const timeFormatter = new Intl.DateTimeFormat('zh-CN', {
   hour: '2-digit',
   minute: '2-digit',
 })
@@ -97,63 +112,69 @@ function App() {
   const [loadingDetail, setLoadingDetail] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  const [notice, setNotice] = useState<Notice | null>(null)
+  const [lastSyncedAt, setLastSyncedAt] = useState<Date | null>(null)
+  const [scope, setScope] = useState<WorkspaceScope>('ALL')
   const [query, setQuery] = useState('')
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('ALL')
   const [riskFilter, setRiskFilter] = useState<RiskFilter>('ALL')
-  const deferredQuery = useDeferredValue(query)
+  const [sort, setSort] = useState<WorkspaceSort>('PRIORITY')
   const initialized = useRef(false)
   const workspaceRequest = useRef(0)
   const detailRequest = useRef(0)
+  const noticeTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const noticeSequence = useRef(0)
 
-  async function initialize() {
-    setLoadingWorkspace(true)
-    setError('')
-    try {
-      const [availableUsers, currentUser] = await Promise.all([api.users(), api.me()])
-      setUsers(availableUsers)
-      setMe(currentUser)
-      await loadWorkspace()
-    } catch (initialError) {
-      setError(errorMessage(initialError))
-      setLoadingWorkspace(false)
-    }
+  const criteria: ViewCriteria = {
+    scope,
+    query,
+    status: statusFilter,
+    risk: riskFilter,
+    sort,
   }
 
-  async function loadWorkspace(preferredId?: string) {
+  async function loadWorkspace(options: {
+    preferredId?: string
+    knownDetail?: ContentDetailData
+    criteria?: Partial<ViewCriteria>
+  } = {}) {
     const requestId = ++workspaceRequest.current
+    const nextCriteria = { ...criteria, ...options.criteria }
     setLoadingWorkspace(true)
     setError('')
     try {
       const workspace = await api.workspace()
       if (requestId !== workspaceRequest.current) return
-      setItems(workspace.items)
 
+      setItems(workspace.items)
+      setLastSyncedAt(new Date())
+      const candidates = selectWorkspaceItems(workspace.items, nextCriteria)
       const nextId =
-        (preferredId && workspace.items.some((item) => item.id === preferredId)
-          ? preferredId
-          : defaultSelection(workspace.items)) ?? null
+        (options.preferredId &&
+        candidates.some((item) => item.id === options.preferredId)
+          ? options.preferredId
+          : candidates[0]?.id) ?? null
       setSelectedId(nextId)
-      detailRequest.current += 1
-      setDetail(null)
-      if (nextId) await loadDetail(nextId)
+
+      if (!nextId) {
+        detailRequest.current += 1
+        setDetail(null)
+      } else if (
+        options.knownDetail &&
+        options.knownDetail.content.id === nextId
+      ) {
+        detailRequest.current += 1
+        setDetail(options.knownDetail)
+      } else {
+        setDetail(null)
+        await loadDetail(nextId)
+      }
     } catch (loadError) {
       if (requestId !== workspaceRequest.current) return
       setError(errorMessage(loadError))
       setItems([])
       setSelectedId(null)
       setDetail(null)
-    } finally {
-      if (requestId === workspaceRequest.current) setLoadingWorkspace(false)
-    }
-  }
-
-  async function refreshWorkspace() {
-    const requestId = ++workspaceRequest.current
-    setLoadingWorkspace(true)
-    try {
-      const workspace = await api.workspace()
-      if (requestId !== workspaceRequest.current) return
-      setItems(workspace.items)
     } finally {
       if (requestId === workspaceRequest.current) setLoadingWorkspace(false)
     }
@@ -176,6 +197,13 @@ function App() {
   }
 
   async function changeUser(userId: string) {
+    const resetCriteria: ViewCriteria = {
+      scope: 'ALL',
+      query: '',
+      status: 'ALL',
+      risk: 'ALL',
+      sort: 'PRIORITY',
+    }
     setBusy(true)
     setError('')
     workspaceRequest.current += 1
@@ -185,11 +213,16 @@ function App() {
     setDetail(null)
     setAdminOpen(false)
     setAdminUsers([])
-    resetFilters()
+    setScope(resetCriteria.scope)
+    setQuery(resetCriteria.query)
+    setStatusFilter(resetCriteria.status)
+    setRiskFilter(resetCriteria.risk)
+    setSort(resetCriteria.sort)
     try {
       const currentUser = await api.switchUser(userId)
       setMe(currentUser)
-      await loadWorkspace()
+      await loadWorkspace({ criteria: resetCriteria })
+      showNotice(`已切换为 ${currentUser.name}`)
     } catch (switchError) {
       setError(errorMessage(switchError))
       setLoadingWorkspace(false)
@@ -198,32 +231,30 @@ function App() {
     }
   }
 
-  function resetFilters() {
-    applyFilters('', 'ALL', 'ALL')
+  function applyView(next: Partial<ViewCriteria>) {
+    const nextCriteria = { ...criteria, ...next }
+    if (next.scope !== undefined) setScope(next.scope)
+    if (next.query !== undefined) setQuery(next.query)
+    if (next.status !== undefined) setStatusFilter(next.status)
+    if (next.risk !== undefined) setRiskFilter(next.risk)
+    if (next.sort !== undefined) setSort(next.sort)
+
+    const candidates = selectWorkspaceItems(items, nextCriteria)
+    if (selectedId && candidates.some((item) => item.id === selectedId)) return
+
+    const nextId = candidates[0]?.id ?? null
+    setSelectedId(nextId)
+    if (nextId) {
+      setDetail(null)
+      void loadDetail(nextId)
+    } else {
+      detailRequest.current += 1
+      setDetail(null)
+    }
   }
 
-  function applyFilters(
-    nextQuery: string,
-    nextStatus: StatusFilter,
-    nextRisk: RiskFilter,
-  ) {
-    setQuery(nextQuery)
-    setStatusFilter(nextStatus)
-    setRiskFilter(nextRisk)
-
-    const matchingItems = items.filter((item) =>
-      matchesContentFilters(item, nextQuery, nextStatus, nextRisk),
-    )
-    if (matchingItems.length === 0) {
-      detailRequest.current += 1
-      setSelectedId(null)
-      setDetail(null)
-      return
-    }
-    if (!selectedId || !matchingItems.some((item) => item.id === selectedId)) {
-      const nextId = defaultSelection(matchingItems)
-      if (nextId) openContent(nextId)
-    }
+  function resetFilters() {
+    applyView({ query: '', status: 'ALL', risk: 'ALL' })
   }
 
   function openContent(contentId: string) {
@@ -238,14 +269,26 @@ function App() {
     setBusy(true)
     setError('')
     try {
-      const saved =
-        editor === 'edit' && detail
-          ? await api.edit(detail.content.id, input, detail.content.version)
-          : await api.create(input)
+      const isEdit = editor === 'edit' && detail
+      const saved = isEdit
+        ? await api.edit(detail.content.id, input, detail.content.version)
+        : await api.create(input)
       setEditor(null)
-      setSelectedId(saved.content.id)
-      setDetail(saved)
-      await refreshWorkspace()
+      setScope('ALL')
+      setQuery('')
+      setStatusFilter('ALL')
+      setRiskFilter('ALL')
+      await loadWorkspace({
+        preferredId: saved.content.id,
+        knownDetail: saved,
+        criteria: {
+          scope: 'ALL',
+          query: '',
+          status: 'ALL',
+          risk: 'ALL',
+        },
+      })
+      showNotice(isEdit ? '内容变更已保存' : '草稿已创建')
     } catch (saveError) {
       setError(errorMessage(saveError))
       throw saveError
@@ -260,8 +303,11 @@ function App() {
     setError('')
     try {
       const updated = await api.submit(detail.content.id, detail.content.version)
-      setDetail(updated)
-      await refreshWorkspace()
+      await loadWorkspace({
+        preferredId: updated.content.id,
+        knownDetail: updated,
+      })
+      showNotice(`已创建第 ${updated.history[0]?.roundNo ?? 1} 轮审核`)
     } catch (submitError) {
       setError(errorMessage(submitError))
     } finally {
@@ -276,8 +322,11 @@ function App() {
     setError('')
     try {
       const updated = await api.decide(round.id, decision, comment)
-      setDetail(updated)
-      await refreshWorkspace()
+      await loadWorkspace({
+        preferredId: updated.content.id,
+        knownDetail: updated,
+      })
+      showNotice(decision === 'APPROVE' ? '审核决定已通过' : '已拒绝当前审核轮次')
     } catch (decisionError) {
       setError(errorMessage(decisionError))
       throw decisionError
@@ -314,6 +363,7 @@ function App() {
       ])
       setUsers(availableUsers)
       setAdminUsers(managedUsers)
+      showNotice(`用户 ${input.name.trim()} 已创建`)
     } catch (createError) {
       setError(errorMessage(createError))
       throw createError
@@ -336,7 +386,13 @@ function App() {
         setAdminOpen(false)
         setAdminUsers([])
       }
-      await loadWorkspace(selectedId ?? undefined)
+      const nextScope = isScopeAvailable(currentUser, scope) ? scope : 'ALL'
+      if (nextScope !== scope) setScope(nextScope)
+      await loadWorkspace({
+        preferredId: selectedId ?? undefined,
+        criteria: { scope: nextScope },
+      })
+      showNotice(`${input.name.trim()} 的权限已更新`)
     } catch (updateError) {
       setError(errorMessage(updateError))
       throw updateError
@@ -345,80 +401,169 @@ function App() {
     }
   }
 
+  function showNotice(message: string, tone: Notice['tone'] = 'success') {
+    if (noticeTimer.current) clearTimeout(noticeTimer.current)
+    noticeSequence.current += 1
+    setNotice({ id: noticeSequence.current, tone, message })
+    noticeTimer.current = setTimeout(() => setNotice(null), 4_000)
+  }
+
   useEffect(() => {
     if (initialized.current) return
     initialized.current = true
-    void initialize()
+    const initializeWorkspace = async () => {
+      const requestId = ++workspaceRequest.current
+      setLoadingWorkspace(true)
+      setError('')
+      try {
+        const [availableUsers, currentUser, workspace] = await Promise.all([
+          api.users(),
+          api.me(),
+          api.workspace(),
+        ])
+        if (requestId !== workspaceRequest.current) return
+        setUsers(availableUsers)
+        setMe(currentUser)
+        setItems(workspace.items)
+        setLastSyncedAt(new Date())
+
+        const initialCriteria: ViewCriteria = {
+          scope: 'ALL',
+          query: '',
+          status: 'ALL',
+          risk: 'ALL',
+          sort: 'PRIORITY',
+        }
+        const nextId =
+          selectWorkspaceItems(workspace.items, initialCriteria)[0]?.id ?? null
+        setSelectedId(nextId)
+        if (nextId) {
+          const nextDetail = await api.detail(nextId)
+          if (requestId === workspaceRequest.current) setDetail(nextDetail)
+        }
+      } catch (initialError) {
+        if (requestId !== workspaceRequest.current) return
+        setError(errorMessage(initialError))
+        setItems([])
+        setSelectedId(null)
+        setDetail(null)
+      } finally {
+        if (requestId === workspaceRequest.current) setLoadingWorkspace(false)
+      }
+    }
+    void initializeWorkspace()
   }, [])
 
-  const filteredItems = items.filter((item) =>
-    matchesContentFilters(item, deferredQuery, statusFilter, riskFilter),
+  useEffect(
+    () => () => {
+      if (noticeTimer.current) clearTimeout(noticeTimer.current)
+    },
+    [],
   )
-  const visibleQueues = queueDefinitions.filter(({ key }) => {
+
+  const visibleQueueDefinitions = queueDefinitions.filter(({ key }) => {
     if (key === 'MINE') return me?.roles.includes('SUBMITTER')
-    if (key === 'ADMIN') return me?.roles.includes('ADMIN')
+    if (key === 'ADMIN') {
+      return me?.roles.includes('ADMIN') && me.roles.length > 1
+    }
     return me?.roles.includes('REVIEWER')
   })
-  const hasFilters = query.trim().length > 0 || statusFilter !== 'ALL' || riskFilter !== 'ALL'
-  const metrics = [
-    {
-      label: '待我审核',
-      value: items.filter((item) => item.queues.includes('PENDING_REVIEW')).length,
-      tone: 'attention',
-    },
-    {
-      label: '审核中',
-      value: items.filter((item) => item.status === 'IN_REVIEW').length,
-      tone: 'info',
-    },
-    {
-      label: '已拒绝',
-      value: items.filter((item) => item.status === 'REJECTED').length,
-      tone: 'danger',
-    },
-    { label: '相关请求', value: items.length, tone: 'neutral' },
-  ]
+  const allScope: ScopeDefinition = {
+    key: 'ALL',
+    title: me?.roles.length === 1 && me.roles.includes('ADMIN') ? '全部请求' : '工作台概览',
+    shortTitle: me?.roles.length === 1 && me.roles.includes('ADMIN') ? '全部请求' : '工作台',
+    description: '当前身份可见的全部相关请求',
+    icon: LayoutDashboard,
+  }
+  const scopeDefinitions = [allScope, ...visibleQueueDefinitions]
+  const activeScope =
+    scopeDefinitions.find((definition) => definition.key === scope) ?? allScope
+  const scopeItems = selectWorkspaceItems(items, {
+    ...criteria,
+    query: '',
+    status: 'ALL',
+    risk: 'ALL',
+  })
+  const visibleItems = selectWorkspaceItems(items, criteria)
+
+  const pendingCount = items.filter((item) =>
+    item.queues.includes('PENDING_REVIEW'),
+  ).length
+  const inReviewCount = items.filter((item) => item.status === 'IN_REVIEW').length
+  const highRiskCount = items.filter(
+    (item) => item.status === 'IN_REVIEW' && item.risk === 'HIGH',
+  ).length
+  const rejectedCount = items.filter((item) => item.status === 'REJECTED').length
 
   return (
     <div className="app-shell">
-      <header className="topbar">
-        <div className="brand">
+      <aside className="app-sidebar">
+        <div className="sidebar-brand">
           <span className="brand-mark">
             <ShieldCheck aria-hidden="true" />
           </span>
           <div>
             <strong>ReviewFlow</strong>
-            <span>统一内容审核工作台</span>
+            <span>Content Operations</span>
           </div>
         </div>
 
-        {me && (
-          <div className="identity-area">
-            <a className="docs-entry" href={`${import.meta.env.BASE_URL}docs/`}>
-              <BookOpen aria-hidden="true" />
-              <span>文档</span>
-            </a>
-            {me.roles.includes('ADMIN') && (
+        <div className="sidebar-context">
+          <span>当前空间</span>
+          <strong>内容治理中心</strong>
+          <small>内部审核 · 生产环境</small>
+        </div>
+
+        <nav className="app-nav" aria-label="审核工作台导航">
+          <span className="nav-label">工作台</span>
+          {scopeDefinitions.map((definition) => {
+            const NavIcon = definition.icon
+            const count =
+              definition.key === 'ALL'
+                ? items.length
+                : items.filter((item) =>
+                    item.queues.includes(definition.key as WorkspaceQueue),
+                  ).length
+            return (
               <button
                 type="button"
-                className="admin-entry"
-                disabled={busy}
-                onClick={openAdmin}
+                key={definition.key}
+                className={scope === definition.key ? 'active' : ''}
+                onClick={() => applyView({ scope: definition.key })}
               >
-                <UsersRound aria-hidden="true" />
-                用户与角色
+                <NavIcon aria-hidden="true" />
+                <span>{definition.shortTitle}</span>
+                <b>{count}</b>
               </button>
-            )}
-            <div className="role-list" aria-label="当前角色">
-              {me.roles.map((role) => (
-                <span key={role}>{role}</span>
-              ))}
-            </div>
-            <label className="user-switch">
-              <span>服务端当前用户</span>
+            )
+          })}
+        </nav>
+
+        <nav className="app-nav secondary-nav" aria-label="系统导航">
+          <span className="nav-label">系统</span>
+          {me?.roles.includes('ADMIN') && (
+            <button type="button" onClick={openAdmin}>
+              <UsersRound aria-hidden="true" />
+              <span>用户与权限</span>
+            </button>
+          )}
+          <a href={`${import.meta.env.BASE_URL}docs/`}>
+            <BookOpen aria-hidden="true" />
+            <span>系统文档</span>
+          </a>
+        </nav>
+
+        {me && (
+          <div className="sidebar-profile">
+            <span className="profile-avatar" aria-hidden="true">
+              {me.name.slice(0, 1).toLocaleUpperCase()}
+            </span>
+            <label>
+              <span>当前操作人</span>
               <select
                 value={me.id}
                 disabled={busy}
+                aria-label="切换当前用户"
                 onChange={(event) => void changeUser(event.target.value)}
               >
                 {users.map((user) => (
@@ -430,241 +575,202 @@ function App() {
             </label>
           </div>
         )}
-      </header>
+      </aside>
 
-      <section className="overview-bar" aria-labelledby="workspace-title">
-        <div className="overview-copy">
-          <p className="eyebrow">END-TO-END WORKSPACE</p>
-          <h1 id="workspace-title">审核请求全景</h1>
-          <p>在同一页面处理待办、跟踪进度并追溯每一轮提交快照。</p>
-        </div>
-        <div className="overview-metrics" aria-label="工作台概览">
-          {metrics.map((metric) => (
-            <span key={metric.label} className={`metric-${metric.tone}`}>
-              <strong>{metric.value}</strong>
-              <small>{metric.label}</small>
+      <div className="app-main">
+        <header className="topbar">
+          <div className="breadcrumbs" aria-label="面包屑">
+            <span>内容治理</span>
+            <b>/</b>
+            <strong>审核工作台</strong>
+          </div>
+          <div className="topbar-tools">
+            <span className="sync-status">
+              <i />
+              {lastSyncedAt
+                ? `已同步 ${timeFormatter.format(lastSyncedAt)}`
+                : '正在连接'}
             </span>
-          ))}
-        </div>
-      </section>
-
-      {error && (
-        <div className="error-banner" role="alert">
-          <span>{error}</span>
-          <button
-            type="button"
-            className="icon-button"
-            title="关闭"
-            aria-label="关闭"
-            onClick={() => setError('')}
-          >
-            ×
-          </button>
-        </div>
-      )}
-
-      <main className="workspace">
-        <aside className="list-pane" aria-label="请求队列">
-          <header className="list-header">
-            <div>
-              <p className="eyebrow">FLOW QUEUES</p>
-              <h2>全部流转</h2>
-            </div>
-            <div className="list-tools">
-              <span
-                className={`item-count ${filteredItems.length !== items.length ? 'filtered' : ''}`}
-                title="当前结果 / 相关请求"
-              >
-                {filteredItems.length === items.length
-                  ? items.length
-                  : `${filteredItems.length}/${items.length}`}
-              </span>
-              <button
-                type="button"
-                className="icon-button"
-                title="刷新工作台"
-                aria-label="刷新工作台"
-                disabled={loadingWorkspace || busy}
-                onClick={() => void loadWorkspace(selectedId ?? undefined)}
-              >
-                <RefreshCw className={loadingWorkspace ? 'spinning' : ''} aria-hidden="true" />
-              </button>
-              {me?.roles.includes('SUBMITTER') && (
-                <button
-                  type="button"
-                  className="icon-button primary-icon"
-                  title="创建内容"
-                  aria-label="创建内容"
-                  disabled={busy}
-                  onClick={() => setEditor('create')}
-                >
-                  <FilePlus2 aria-hidden="true" />
-                </button>
-              )}
-            </div>
-          </header>
-
-          <div className="filter-toolbar">
-            <label className="search-field">
-              <span className="sr-only">搜索标题或作者</span>
-              <Search aria-hidden="true" />
-              <input
-                type="search"
-                value={query}
-                placeholder="搜索标题或作者"
-                onChange={(event) =>
-                  applyFilters(event.target.value, statusFilter, riskFilter)
-                }
+            <button
+              type="button"
+              className="icon-button"
+              title="刷新全部数据"
+              aria-label="刷新全部数据"
+              disabled={loadingWorkspace || busy}
+              onClick={() =>
+                void loadWorkspace({ preferredId: selectedId ?? undefined })
+              }
+            >
+              <RefreshCw
+                className={loadingWorkspace ? 'spinning' : ''}
+                aria-hidden="true"
               />
-            </label>
-            <div className="filter-options">
-              <label className="filter-select">
-                <span>状态</span>
-                <select
-                  value={statusFilter}
-                  onChange={(event) =>
-                    applyFilters(query, event.target.value as StatusFilter, riskFilter)
-                  }
-                >
-                  <option value="ALL">全部状态</option>
-                  <option value="DRAFT">草稿</option>
-                  <option value="IN_REVIEW">审核中</option>
-                  <option value="APPROVED">已通过</option>
-                  <option value="REJECTED">已拒绝</option>
-                </select>
-              </label>
-              <label className="filter-select">
-                <span>风险</span>
-                <select
-                  value={riskFilter}
-                  onChange={(event) =>
-                    applyFilters(query, statusFilter, event.target.value as RiskFilter)
-                  }
-                >
-                  <option value="ALL">全部风险</option>
-                  <option value="LOW">LOW</option>
-                  <option value="HIGH">HIGH</option>
-                </select>
-              </label>
-              {hasFilters && (
-                <button
-                  type="button"
-                  className="icon-button clear-filters"
-                  title="清除筛选"
-                  aria-label="清除筛选"
-                  onClick={resetFilters}
-                >
-                  <X aria-hidden="true" />
-                </button>
-              )}
+            </button>
+            <div className="role-list" aria-label="当前角色">
+              {me?.roles.map((role) => <span key={role}>{role}</span>)}
             </div>
           </div>
+        </header>
 
-          {loadingWorkspace && items.length === 0 ? (
-            <div className="loading-state">
-              <LoaderCircle aria-hidden="true" />
-              加载工作台…
+        <section className="page-header" aria-labelledby="workspace-title">
+          <div className="page-title-row">
+            <div>
+              <span className="section-kicker">REVIEW OPERATIONS</span>
+              <h1 id="workspace-title">审核工作台</h1>
+              <p>集中处理审核待办、跟踪当前进度并追溯每一轮内容快照。</p>
             </div>
-          ) : (
-            <div className="queue-board">
-              {visibleQueues.map((queue) => {
-                const QueueIcon = queue.icon
-                const queueItems = filteredItems.filter((item) =>
-                  item.queues.includes(queue.key),
-                )
-                const total = items.filter((item) => item.queues.includes(queue.key)).length
-                return (
-                  <section className="queue-section" key={queue.key}>
-                    <header className="queue-section-header">
-                      <span className={`queue-icon queue-${queue.key.toLowerCase()}`}>
-                        <QueueIcon aria-hidden="true" />
-                      </span>
-                      <span>
-                        <strong>{queue.title}</strong>
-                        <small>{queue.description}</small>
-                      </span>
-                      <b title="当前结果 / 队列总数">
-                        {queueItems.length === total ? total : `${queueItems.length}/${total}`}
-                      </b>
-                    </header>
-                    {queueItems.length === 0 ? (
-                      <div className="queue-empty">
-                        <Archive aria-hidden="true" />
-                        <span>{total === 0 ? '当前队列为空' : '没有匹配筛选的请求'}</span>
-                      </div>
-                    ) : (
-                      <div className="content-list">
-                        {queueItems.map((item) => (
-                          <button
-                            type="button"
-                            key={`${queue.key}-${item.id}`}
-                            className={`content-list-item ${selectedId === item.id ? 'selected' : ''}`}
-                            disabled={busy}
-                            onClick={() => openContent(item.id)}
-                          >
-                            <span className="list-item-topline">
-                              <span className={`risk-dot risk-${item.risk.toLowerCase()}`}>
-                                {item.risk}
-                              </span>
-                              <span className={`status-text status-${item.status.toLowerCase()}`}>
-                                {statusLabels[item.status]}
-                              </span>
-                            </span>
-                            <strong>{item.title}</strong>
-                            <span className="list-item-progress">
-                              {item.currentRound ? (
-                                <>
-                                  R{item.currentRound.roundNo} ·{' '}
-                                  {item.currentRound.approvalCount}/
-                                  {item.currentRound.requiredApprovals} 票
-                                  <span>· 共 {item.roundCount} 轮</span>
-                                </>
-                              ) : (
-                                '尚未提交审核'
-                              )}
-                            </span>
-                            <span className="list-item-meta">
-                              <span>{item.author.name}</span>
-                              <span className="list-item-date">
-                                <Clock3 aria-hidden="true" />
-                                {compactDateFormatter.format(new Date(item.updatedAt))}
-                              </span>
-                            </span>
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                  </section>
-                )
-              })}
-            </div>
-          )}
-        </aside>
+            {me?.roles.includes('SUBMITTER') && (
+              <button
+                type="button"
+                className="button primary create-button"
+                disabled={busy}
+                onClick={() => setEditor('create')}
+              >
+                <FilePlus2 aria-hidden="true" />
+                新建内容
+              </button>
+            )}
+          </div>
 
-        <section className="detail-pane" aria-label="请求详情">
-          {loadingDetail && !detail ? (
-            <div className="loading-state">
-              <LoaderCircle aria-hidden="true" />
-              加载请求详情…
-            </div>
-          ) : detail ? (
-            <ContentDetail
-              key={`${detail.content.id}-${detail.content.version}`}
-              detail={detail}
-              busy={busy}
-              onEdit={() => setEditor('edit')}
-              onSubmit={submitCurrent}
-              onDecision={decideCurrent}
-            />
-          ) : (
-            <div className="empty-detail">
-              <ShieldCheck aria-hidden="true" />
-              <h2>选择一条审核请求</h2>
-              <p>完整状态轨迹、当前进度、提交快照和每次审核决定会显示在这里。</p>
-            </div>
-          )}
+          <div className="metric-grid" aria-label="审核运营概览">
+            <button
+              type="button"
+              className="metric-card metric-pending"
+              onClick={() =>
+                applyView({
+                  scope: me?.roles.includes('REVIEWER')
+                    ? 'PENDING_REVIEW'
+                    : 'ALL',
+                  status: 'ALL',
+                  risk: 'ALL',
+                })
+              }
+            >
+              <span className="metric-icon"><Inbox aria-hidden="true" /></span>
+              <span><small>待我处理</small><strong>{pendingCount}</strong></span>
+              <em>需要审核决定</em>
+            </button>
+            <button
+              type="button"
+              className="metric-card metric-reviewing"
+              onClick={() =>
+                applyView({ scope: 'ALL', status: 'IN_REVIEW', risk: 'ALL' })
+              }
+            >
+              <span className="metric-icon"><Activity aria-hidden="true" /></span>
+              <span><small>审核中</small><strong>{inReviewCount}</strong></span>
+              <em>开放轮次</em>
+            </button>
+            <button
+              type="button"
+              className="metric-card metric-risk"
+              onClick={() =>
+                applyView({ scope: 'ALL', status: 'IN_REVIEW', risk: 'HIGH' })
+              }
+            >
+              <span className="metric-icon"><TriangleAlert aria-hidden="true" /></span>
+              <span><small>高风险待审</small><strong>{highRiskCount}</strong></span>
+              <em>需要双人通过</em>
+            </button>
+            <button
+              type="button"
+              className="metric-card metric-rejected"
+              onClick={() =>
+                applyView({ scope: 'ALL', status: 'REJECTED', risk: 'ALL' })
+              }
+            >
+              <span className="metric-icon"><Gauge aria-hidden="true" /></span>
+              <span><small>已拒绝</small><strong>{rejectedCount}</strong></span>
+              <em>可修改重提</em>
+            </button>
+          </div>
         </section>
-      </main>
+
+        <main className="workspace">
+          <WorkspaceRequestList
+            title={activeScope.title}
+            description={activeScope.description}
+            items={visibleItems}
+            totalCount={scopeItems.length}
+            selectedId={selectedId}
+            query={query}
+            statusFilter={statusFilter}
+            riskFilter={riskFilter}
+            sort={sort}
+            loading={loadingWorkspace}
+            busy={busy}
+            onQueryChange={(nextQuery) => applyView({ query: nextQuery })}
+            onFiltersChange={(status, risk) => applyView({ status, risk })}
+            onSortChange={(nextSort) => applyView({ sort: nextSort })}
+            onResetFilters={resetFilters}
+            onSelect={openContent}
+            onRefresh={() =>
+              void loadWorkspace({ preferredId: selectedId ?? undefined })
+            }
+          />
+
+          <section className="detail-pane" aria-label="请求详情">
+            {loadingDetail && !detail ? (
+              <div className="detail-loading">
+                <span />
+                <span />
+                <span />
+                <span />
+              </div>
+            ) : detail ? (
+              <ContentDetail
+                key={`${detail.content.id}-${detail.content.version}`}
+                detail={detail}
+                busy={busy}
+                onEdit={() => setEditor('edit')}
+                onSubmit={submitCurrent}
+                onDecision={decideCurrent}
+                onNotify={showNotice}
+              />
+            ) : (
+              <div className="empty-detail">
+                <span className="empty-detail-icon">
+                  <ShieldCheck aria-hidden="true" />
+                </span>
+                <span className="section-kicker">REQUEST INSPECTOR</span>
+                <h2>选择一条审核请求</h2>
+                <p>内容、轮次进度、审核操作和完整审计记录会显示在这里。</p>
+              </div>
+            )}
+          </section>
+        </main>
+      </div>
+
+      <div className="toast-stack" aria-live="polite">
+        {error && (
+          <div className="toast toast-error" role="alert">
+            <TriangleAlert aria-hidden="true" />
+            <span>
+              <strong>操作未完成</strong>
+              <small>{error}</small>
+            </span>
+            <button type="button" aria-label="关闭错误" onClick={() => setError('')}>
+              <X aria-hidden="true" />
+            </button>
+          </div>
+        )}
+        {notice && (
+          <div className={`toast toast-${notice.tone}`} key={notice.id}>
+            {notice.tone === 'error' ? (
+              <TriangleAlert aria-hidden="true" />
+            ) : (
+              <CheckCircle2 aria-hidden="true" />
+            )}
+            <span>
+              <strong>操作成功</strong>
+              <small>{notice.message}</small>
+            </span>
+            <button type="button" aria-label="关闭通知" onClick={() => setNotice(null)}>
+              <X aria-hidden="true" />
+            </button>
+          </div>
+        )}
+      </div>
 
       {editor && (
         <ContentEditor
@@ -700,28 +806,68 @@ function App() {
   )
 }
 
-function defaultSelection(items: WorkspaceItem[]): string | undefined {
-  return (
-    items.find((item) => item.queues.includes('PENDING_REVIEW')) ??
-    items.find((item) => item.queues.includes('MINE')) ??
-    items[0]
-  )?.id
+function selectWorkspaceItems(
+  items: WorkspaceItem[],
+  criteria: ViewCriteria,
+): WorkspaceItem[] {
+  const normalizedQuery = criteria.query.trim().toLocaleLowerCase('zh-CN')
+  return items
+    .filter((item) => {
+      const matchesScope =
+        criteria.scope === 'ALL' || item.queues.includes(criteria.scope)
+      const matchesQuery =
+        normalizedQuery.length === 0 ||
+        item.title.toLocaleLowerCase('zh-CN').includes(normalizedQuery) ||
+        item.author.name.toLocaleLowerCase('zh-CN').includes(normalizedQuery)
+      const matchesStatus =
+        criteria.status === 'ALL' || item.status === criteria.status
+      const matchesRisk =
+        criteria.risk === 'ALL' || item.risk === criteria.risk
+      return matchesScope && matchesQuery && matchesStatus && matchesRisk
+    })
+    .sort((left, right) => compareWorkspaceItems(left, right, criteria.sort))
 }
 
-function matchesContentFilters(
-  item: WorkspaceItem,
-  query: string,
-  status: StatusFilter,
-  risk: RiskFilter,
-): boolean {
-  const normalizedQuery = query.trim().toLocaleLowerCase('zh-CN')
-  const matchesQuery =
-    normalizedQuery.length === 0 ||
-    item.title.toLocaleLowerCase('zh-CN').includes(normalizedQuery) ||
-    item.author.name.toLocaleLowerCase('zh-CN').includes(normalizedQuery)
-  const matchesStatus = status === 'ALL' || item.status === status
-  const matchesRisk = risk === 'ALL' || item.risk === risk
-  return matchesQuery && matchesStatus && matchesRisk
+function compareWorkspaceItems(
+  left: WorkspaceItem,
+  right: WorkspaceItem,
+  sort: WorkspaceSort,
+): number {
+  if (sort === 'TITLE_ASC') {
+    return left.title.localeCompare(right.title, 'zh-CN')
+  }
+  if (sort === 'UPDATED_ASC') {
+    return (
+      left.updatedAt.localeCompare(right.updatedAt) ||
+      left.id.localeCompare(right.id)
+    )
+  }
+  if (sort === 'UPDATED_DESC') {
+    return (
+      right.updatedAt.localeCompare(left.updatedAt) ||
+      left.id.localeCompare(right.id)
+    )
+  }
+  return (
+    workspacePriority(left) - workspacePriority(right) ||
+    right.updatedAt.localeCompare(left.updatedAt) ||
+    left.id.localeCompare(right.id)
+  )
+}
+
+function workspacePriority(item: WorkspaceItem): number {
+  if (item.queues.includes('PENDING_REVIEW')) return item.risk === 'HIGH' ? 0 : 1
+  if (item.status === 'IN_REVIEW') return item.risk === 'HIGH' ? 2 : 3
+  if (item.status === 'REJECTED') return 4
+  if (item.status === 'DRAFT') return 5
+  return 6
+}
+
+function isScopeAvailable(user: User, scope: WorkspaceScope): boolean {
+  if (scope === 'ALL') return true
+  if (scope === 'MINE') return user.roles.includes('SUBMITTER')
+  if (scope === 'ADMIN') return user.roles.includes('ADMIN')
+  return user.roles.includes('REVIEWER')
 }
 
 export default App

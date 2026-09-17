@@ -63,9 +63,9 @@
                   <tr><td>静态检查</td><td><code>npm run lint</code></td><td><span class="status pass">PASS</span></td><td>0 warning，0 error</td></tr>
                   <tr><td>自动化测试</td><td><code>npm test</code></td><td><span class="status pass">PASS</span></td><td>3 个测试文件，22 个测试全部通过</td></tr>
                   <tr><td>生产构建</td><td><code>npm run build</code></td><td><span class="status pass">PASS</span></td><td>React、Vite、服务端 TypeScript 全部通过</td></tr>
-                  <tr><td>远端构建</td><td>Ubuntu Node 22.23.1</td><td><span class="status pass">PASS</span></td><td>同一 release 再次执行完整门禁</td></tr>
+                  <tr><td>远端构建</td><td>GitHub Actions · Ubuntu 24.04 · Node 24</td><td><span class="status pass">PASS</span></td><td>完整质量门禁与生产容器 smoke test</td></tr>
                   <tr><td>线上健康</td><td><code>GET /api/health</code></td><td><span class="status pass">PASS</span></td><td>HTTP 200，database=sqlite</td></tr>
-                  <tr><td>浏览器验证</td><td>桌面 + 手机视口</td><td><span class="status pass">PASS</span></td><td>0 console error，0 page error，无横向溢出</td></tr>
+                  <tr><td>浏览器验证</td><td>1280、1440、1600 PC 视口</td><td><span class="status pass">PASS</span></td><td>0 console error，0 page error，无页面级横向溢出</td></tr>
                 </tbody>
               </table>
             </div>
@@ -124,15 +124,17 @@
 
           <section class="doc-section">
             <p class="eyebrow">04 / Browser verification</p>
-            <h2>浏览器与响应式验证</h2>
+            <h2>PC 浏览器与工作台验证</h2>
             <div class="table-wrap">
               <table>
                 <thead><tr><th>视口或流程</th><th>检查点</th><th>结果</th></tr></thead>
                 <tbody>
-                  <tr><td>1440 × 900</td><td>48 条列表、独立滚动、详情、统计与筛选无重叠</td><td><span class="status pass">PASS</span></td></tr>
-                  <tr><td>390 × 844</td><td>搜索与双筛选可见，页面及最宽元素无横向溢出</td><td><span class="status pass">PASS</span></td></tr>
-                  <tr><td>HIGH + 审核中</td><td>7/48，详情自动同步到首个匹配结果</td><td><span class="status pass">PASS</span></td></tr>
-                  <tr><td>搜索“续费”</td><td>唯一结果为“会员续费提醒”，详情显示 HIGH 2/2 历史</td><td><span class="status pass">PASS</span></td></tr>
+                  <tr><td>1280 × 800</td><td>固定导航、372px 请求清单和弹性详情完整可用，无页面级横向溢出</td><td><span class="status pass">PASS</span></td></tr>
+                  <tr><td>1440 × 900</td><td>运营指标、唯一请求清单、内容/进度并排卡片和历史无重叠</td><td><span class="status pass">PASS</span></td></tr>
+                  <tr><td>1600 × 1000</td><td>三栏布局使用完整视口，页面 scrollWidth 与 clientWidth 一致</td><td><span class="status pass">PASS</span></td></tr>
+                  <tr><td>效率交互</td><td>待办/高风险筛选、四种排序、⌘K 搜索和方向键切换同步更新详情</td><td><span class="status pass">PASS</span></td></tr>
+                  <tr><td>审计导出</td><td>下载文件名包含请求 ID，成功反馈明确</td><td><span class="status pass">PASS</span></td></tr>
+                  <tr><td>ADMIN 用户管理</td><td>侧滑抽屉展示角色汇总、搜索和角色矩阵；ADMIN 本身不获得审核按钮</td><td><span class="status pass">PASS</span></td></tr>
                   <tr><td>控制台</td><td>页面加载后的 console error 与 page error</td><td><span class="status pass">0 / PASS</span></td></tr>
                 </tbody>
               </table>

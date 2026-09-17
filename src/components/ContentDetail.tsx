@@ -4,6 +4,8 @@ import {
   Check,
   CheckCircle2,
   Clock3,
+  Copy,
+  Download,
   FileClock,
   FileText,
   GitBranch,
@@ -28,6 +30,7 @@ interface ContentDetailProps {
   onEdit: () => void
   onSubmit: () => Promise<void>
   onDecision: (decision: DecisionType, comment: string) => Promise<void>
+  onNotify: (message: string, tone?: 'success' | 'error') => void
 }
 
 const statusLabels = {
@@ -49,6 +52,7 @@ export function ContentDetail({
   onEdit,
   onSubmit,
   onDecision,
+  onNotify,
 }: ContentDetailProps) {
   const [comment, setComment] = useState('')
   const [decisionError, setDecisionError] = useState('')
@@ -75,10 +79,56 @@ export function ContentDetail({
     }
   }
 
+  async function copyRequestId() {
+    try {
+      await navigator.clipboard.writeText(content.id)
+      onNotify('请求 ID 已复制')
+    } catch {
+      onNotify('浏览器无法访问剪贴板，请手动复制请求 ID', 'error')
+    }
+  }
+
+  function exportAuditRecord() {
+    try {
+      const payload = JSON.stringify(
+        {
+          exportedAt: new Date().toISOString(),
+          content: detail.content,
+          reviewHistory: detail.history,
+        },
+        null,
+        2,
+      )
+      const url = URL.createObjectURL(
+        new Blob([payload], { type: 'application/json;charset=utf-8' }),
+      )
+      const anchor = document.createElement('a')
+      anchor.href = url
+      anchor.download = `reviewflow-${content.id}.json`
+      anchor.click()
+      URL.revokeObjectURL(url)
+      onNotify('审计记录已导出')
+    } catch {
+      onNotify('审计记录导出失败', 'error')
+    }
+  }
+
   return (
     <article className="detail-panel">
       <header className="detail-header">
         <div className="detail-title">
+          <div className="detail-record-id">
+            <span>REQUEST</span>
+            <code>{content.id}</code>
+            <button
+              type="button"
+              title="复制请求 ID"
+              aria-label="复制请求 ID"
+              onClick={() => void copyRequestId()}
+            >
+              <Copy aria-hidden="true" />
+            </button>
+          </div>
           <div className="badge-row">
             <span className={`status-badge status-${content.status.toLowerCase()}`}>
               {statusLabels[content.status]}
@@ -97,6 +147,14 @@ export function ContentDetail({
           </p>
         </div>
         <div className="detail-actions">
+          <button
+            type="button"
+            className="button secondary utility-button"
+            onClick={exportAuditRecord}
+          >
+            <Download aria-hidden="true" />
+            导出审计
+          </button>
           {capabilities.canEdit && (
             <button type="button" className="button secondary" disabled={busy} onClick={onEdit}>
               <Pencil aria-hidden="true" />
@@ -156,67 +214,73 @@ export function ContentDetail({
         </p>
       ) : null}
 
-      <section className="content-section" aria-labelledby="content-body-title">
-        <div className="section-heading compact-heading">
-          <div>
-            <p className="eyebrow">CURRENT CONTENT</p>
-            <h3 id="content-body-title">
-              {content.viewingSubmittedSnapshot ? '最近提交内容' : '当前内容'}
-            </h3>
-          </div>
-        </div>
-        <div className="content-body">{content.body}</div>
-      </section>
-
-      {latestRound && (
-        <section className="review-progress" aria-labelledby="progress-title">
-          <div className="section-heading">
+      <div className={`detail-summary-grid ${latestRound ? '' : 'single'}`}>
+        <section className="content-section surface-card" aria-labelledby="content-body-title">
+          <div className="section-heading compact-heading">
             <div>
-              <p className="eyebrow">ROUND {latestRound.roundNo}</p>
-              <h3 id="progress-title">
-                {latestRound.status === 'OPEN' ? '当前审核进度' : '最近一轮结果'}
+              <p className="eyebrow">CURRENT CONTENT</p>
+              <h3 id="content-body-title">
+                {content.viewingSubmittedSnapshot ? '最近提交内容' : '当前内容'}
               </h3>
             </div>
-            <span className={`round-result result-${latestRound.status.toLowerCase()}`}>
-              {statusLabels[latestRound.status]}
-            </span>
+            <span className="content-length">{content.body.length} 字</span>
           </div>
-
-          <div className="progress-stats">
-            <span>
-              <strong>{latestRound.approvalCount}</strong>
-              <small>已通过票</small>
-            </span>
-            <span>
-              <strong>{latestRound.requiredApprovals}</strong>
-              <small>所需票数</small>
-            </span>
-            <span>
-              <strong>
-                {latestRound.status === 'OPEN' ? remainingApprovals : '—'}
-              </strong>
-              <small>仍需通过</small>
-            </span>
-          </div>
-          <div
-            className="progress-track"
-            role="progressbar"
-            aria-valuemin={0}
-            aria-valuemax={latestRound.requiredApprovals}
-            aria-valuenow={latestRound.approvalCount}
-          >
-            <span style={{ width: `${progress}%` }} />
-          </div>
-          <p className={`progress-explanation progress-${latestRound.status.toLowerCase()}`}>
-            {latestRound.status === 'OPEN' &&
-              `本轮还需要 ${remainingApprovals} 位不同审核人通过；任意合法拒绝都会立即结束本轮。`}
-            {latestRound.status === 'APPROVED' &&
-              `本轮已达到 ${latestRound.requiredApprovals} 票通过阈值，内容进入不可编辑终态。`}
-            {latestRound.status === 'REJECTED' &&
-              '本轮因拒绝结束；已有通过票作为真实历史保留，但不会计入下一轮。'}
-          </p>
+          <div className="content-body">{content.body}</div>
         </section>
-      )}
+
+        {latestRound && (
+          <section className="review-progress surface-card" aria-labelledby="progress-title">
+            <div className="section-heading">
+              <div>
+                <p className="eyebrow">ROUND {latestRound.roundNo}</p>
+                <h3 id="progress-title">
+                  {latestRound.status === 'OPEN' ? '当前审核进度' : '最近一轮结果'}
+                </h3>
+              </div>
+              <span className={`round-result result-${latestRound.status.toLowerCase()}`}>
+                {statusLabels[latestRound.status]}
+              </span>
+            </div>
+
+            <div className="approval-figure">
+              <strong>
+                {latestRound.approvalCount}
+                <small> / {latestRound.requiredApprovals}</small>
+              </strong>
+              <span>审核人已通过</span>
+            </div>
+            <div
+              className="progress-track"
+              role="progressbar"
+              aria-valuemin={0}
+              aria-valuemax={latestRound.requiredApprovals}
+              aria-valuenow={latestRound.approvalCount}
+            >
+              <span style={{ width: `${progress}%` }} />
+            </div>
+            <div className="progress-stats">
+              <span>
+                <strong>{latestRound.requiredApprovals}</strong>
+                <small>通过阈值</small>
+              </span>
+              <span>
+                <strong>
+                  {latestRound.status === 'OPEN' ? remainingApprovals : '—'}
+                </strong>
+                <small>仍需通过</small>
+              </span>
+            </div>
+            <p className={`progress-explanation progress-${latestRound.status.toLowerCase()}`}>
+              {latestRound.status === 'OPEN' &&
+                `仍需 ${remainingApprovals} 位不同审核人通过；任意拒绝会立即结束本轮。`}
+              {latestRound.status === 'APPROVED' &&
+                `已达到 ${latestRound.requiredApprovals} 票阈值，内容进入不可编辑终态。`}
+              {latestRound.status === 'REJECTED' &&
+                '本轮因拒绝结束；已有通过票保留，但不会计入下一轮。'}
+            </p>
+          </section>
+        )}
+      </div>
 
       {capabilities.canReview && latestRound && (
         <section className="decision-panel" aria-labelledby="decision-title">

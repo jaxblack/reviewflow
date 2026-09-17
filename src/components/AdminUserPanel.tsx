@@ -2,6 +2,7 @@ import {
   LoaderCircle,
   RefreshCw,
   Save,
+  Search,
   ShieldCheck,
   UserPlus,
   UsersRound,
@@ -48,6 +49,14 @@ export function AdminUserPanel({
   onUpdate,
 }: AdminUserPanelProps) {
   const dialogRef = useRef<HTMLDialogElement>(null)
+  const [query, setQuery] = useState('')
+  const normalizedQuery = query.trim().toLocaleLowerCase('zh-CN')
+  const filteredUsers = users.filter(
+    (user) =>
+      normalizedQuery.length === 0 ||
+      user.name.toLocaleLowerCase('zh-CN').includes(normalizedQuery) ||
+      user.roles.some((role) => role.toLocaleLowerCase().includes(normalizedQuery)),
+  )
 
   useEffect(() => {
     const dialog = dialogRef.current
@@ -108,15 +117,43 @@ export function AdminUserPanel({
       </div>
 
       <div className="admin-dialog-body">
+        <section className="admin-overview" aria-label="用户角色概览">
+          <span>
+            <small>全部成员</small>
+            <strong>{users.length}</strong>
+          </span>
+          <span>
+            <small>提交人</small>
+            <strong>{users.filter((user) => user.roles.includes('SUBMITTER')).length}</strong>
+          </span>
+          <span>
+            <small>审核人</small>
+            <strong>{users.filter((user) => user.roles.includes('REVIEWER')).length}</strong>
+          </span>
+          <span>
+            <small>管理员</small>
+            <strong>{users.filter((user) => user.roles.includes('ADMIN')).length}</strong>
+          </span>
+        </section>
+
         <CreateUserForm busy={busy} onCreate={onCreate} />
 
         <section className="admin-users" aria-labelledby="user-list-title">
           <div className="admin-section-heading">
             <div>
               <p className="eyebrow">MEMBERS</p>
-              <h3 id="user-list-title">现有用户</h3>
+              <h3 id="user-list-title">成员与权限</h3>
             </div>
-            <span>{users.length} 人</span>
+            <label className="admin-search">
+              <Search aria-hidden="true" />
+              <span className="sr-only">筛选成员</span>
+              <input
+                type="search"
+                value={query}
+                placeholder="搜索成员或角色"
+                onChange={(event) => setQuery(event.target.value)}
+              />
+            </label>
           </div>
 
           {loading && users.length === 0 ? (
@@ -125,17 +162,28 @@ export function AdminUserPanel({
               加载用户…
             </div>
           ) : (
-            <div className="admin-user-list">
-              {users.map((user) => (
-                <UserRoleEditor
-                  key={`${user.id}:${user.name}:${[...user.roles].sort().join(',')}`}
-                  user={user}
-                  isCurrent={user.id === currentUserId}
-                  busy={busy}
-                  onUpdate={onUpdate}
-                />
-              ))}
-            </div>
+            <>
+              <div className="admin-table-head" aria-hidden="true">
+                <span>成员</span>
+                <span>业务活动</span>
+                <span>角色权限</span>
+              </div>
+              {filteredUsers.length === 0 ? (
+                <div className="admin-empty">没有匹配的成员</div>
+              ) : (
+                <div className="admin-user-list">
+                  {filteredUsers.map((user) => (
+                    <UserRoleEditor
+                      key={`${user.id}:${user.name}:${[...user.roles].sort().join(',')}`}
+                      user={user}
+                      isCurrent={user.id === currentUserId}
+                      busy={busy}
+                      onUpdate={onUpdate}
+                    />
+                  ))}
+                </div>
+              )}
+            </>
           )}
         </section>
       </div>

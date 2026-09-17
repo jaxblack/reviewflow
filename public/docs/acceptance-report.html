@@ -38,7 +38,7 @@
           <header class="page-header">
             <p class="kicker">MVP acceptance / 2026-09-17</p>
             <h1>验收报告</h1>
-            <p class="lead">ReviewFlow 已完成单实例 MVP 的核心业务闭环：服务端身份、内容提交、分级审核、拒绝重提、不可变历史、幂等和唯一终态均可运行并具有自动化证据。</p>
+            <p class="lead">ReviewFlow 已完成单实例 MVP 的核心业务闭环：企业级 PC 工作台、服务端身份、内容提交、分级审核、拒绝重提、不可变历史、用户角色管理、幂等和唯一终态均可运行并具有自动化证据。</p>
             <div class="page-meta">
               <span><strong>验收结论</strong> <span class="status pass">通过</span></span>
               <span><strong>功能基线</strong> 0.1.0</span>
@@ -78,7 +78,7 @@
               <table>
                 <thead><tr><th>ID</th><th>要求</th><th>实现证据</th><th>结果</th></tr></thead>
                 <tbody>
-                  <tr><td>AC-F01</td><td>提交人创建、编辑和查看自己的内容</td><td>我的内容视图、创建与编辑 API</td><td><span class="status pass">PASS</span></td></tr>
+                  <tr><td>AC-F01</td><td>提交人创建、编辑和查看自己的内容</td><td>统一工作台“我的提交”、创建与编辑 API</td><td><span class="status pass">PASS</span></td></tr>
                   <tr><td>AC-F02</td><td>DRAFT、REJECTED 可编辑</td><td>服务端状态校验与 capability</td><td><span class="status pass">PASS</span></td></tr>
                   <tr><td>AC-F03</td><td>IN_REVIEW、APPROVED 不可编辑</td><td>非法状态返回 409，按钮不展示</td><td><span class="status pass">PASS</span></td></tr>
                   <tr><td>AC-F04</td><td>每次提交创建新审核轮次</td><td>revision + round 同事务新增</td><td><span class="status pass">PASS</span></td></tr>
@@ -88,7 +88,9 @@
                   <tr><td>AC-F08</td><td>拒绝理由非空，通过意见可选</td><td>Zod、服务层、数据库 CHECK</td><td><span class="status pass">PASS</span></td></tr>
                   <tr><td>AC-F09</td><td>作者不能审核自己创建的内容</td><td>T-01 服务端拒绝，自审记录为 0</td><td><span class="status pass">PASS</span></td></tr>
                   <tr><td>AC-F10</td><td>拒绝后修改并重提，旧轮不计票</td><td>T-02 与两轮不同快照案例</td><td><span class="status pass">PASS</span></td></tr>
-                  <tr><td>AC-F11</td><td>我的内容、待我审核、详情进度、完整历史</td><td>角色视图、详情页和审核历史</td><td><span class="status pass">PASS</span></td></tr>
+                  <tr><td>AC-F11</td><td>我的内容、待我审核、详情进度、完整历史</td><td>统一工作台语义队列与全生命周期详情</td><td><span class="status pass">PASS</span></td></tr>
+                  <tr><td>AC-X01</td><td>ADMIN 用户与叠加角色管理</td><td>服务端管理 API、最后管理员/开放轮次保护和 PC 权限抽屉</td><td><span class="status pass">PASS</span></td></tr>
+                  <tr><td>AC-X02</td><td>企业级 PC 操作效率</td><td>唯一请求清单、智能排序、组合/快捷筛选、键盘导航、成功反馈和审计导出</td><td><span class="status pass">PASS</span></td></tr>
                 </tbody>
               </table>
             </div>
@@ -122,7 +124,7 @@
               <li><span>用户级 systemd 服务处于 active、enabled，异常退出自动重启。</span></li>
               <li><span>SQLite 数据位于共享持久目录，不随 release 切换丢失。</span></li>
               <li><span>48 条 demo 数据可查询，状态和风险分布符合数据契约。</span></li>
-              <li><span>桌面与手机视口无横向溢出，浏览器控制台无错误。</span></li>
+              <li><span>1280、1440 和 1600 PC 视口无页面级横向溢出，浏览器控制台无错误。</span></li>
             </ul>
           </section>
 

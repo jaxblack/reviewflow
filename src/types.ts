@@ -5,6 +5,12 @@ export type RoundStatus = 'OPEN' | 'APPROVED' | 'REJECTED'
 export type DecisionType = 'APPROVE' | 'REJECT'
 export type ViewKey = 'mine' | 'pending' | 'all'
 export type WorkspaceQueue = 'MINE' | 'PENDING_REVIEW' | 'REVIEWED' | 'ADMIN'
+export type WorkspaceScope = 'ALL' | WorkspaceQueue
+export type WorkspaceSort =
+  | 'PRIORITY'
+  | 'UPDATED_DESC'
+  | 'UPDATED_ASC'
+  | 'TITLE_ASC'
 
 export interface User {
   id: string

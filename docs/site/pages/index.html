@@ -36,7 +36,7 @@
           <header class="page-header">
             <p class="kicker">ReviewFlow / Documentation</p>
             <h1>工程文档中心</h1>
-            <p class="lead">集中呈现当前可运行 MVP 的架构、测试证据、需求验收和线上运行边界。所有结论以版本 <code>{{SITE_VERSION}}</code> 与 {{UPDATED_AT}} 的验证结果为基线。</p>
+            <p class="lead">集中呈现当前可运行 MVP 的企业级审核工作台、用户角色管理、边界决策、测试证据、需求验收和线上运行边界。所有结论以版本 <code>{{SITE_VERSION}}</code> 与 {{UPDATED_AT}} 的验证结果为基线。</p>
             <div class="page-meta">
               <span><strong>版本</strong> {{SITE_VERSION}}</span>
               <span><strong>环境</strong> 腾讯云单实例</span>
@@ -70,7 +70,7 @@
               <a class="document-card" href="./test-report.html">
                 <span class="status pass">VERIFIED</span>
                 <strong>测试报告</strong>
-                <p>自动化测试、构建、API、浏览器、桌面和移动端验证证据。</p>
+                <p>自动化测试、构建、API 和多尺寸 PC 浏览器验证证据。</p>
                 <span class="card-link">查看测试结果 →</span>
               </a>
               <a class="document-card" href="./acceptance-report.html">
@@ -95,10 +95,10 @@
               <table>
                 <thead><tr><th>层次</th><th>当前实现</th><th>状态</th></tr></thead>
                 <tbody>
-                  <tr><td>Web</td><td>React 19、TypeScript、Vite，响应式审核工作台</td><td><span class="status pass">PASS</span></td></tr>
-                  <tr><td>API</td><td>Fastify、Zod、签名会话、服务端权限校验</td><td><span class="status pass">PASS</span></td></tr>
+                  <tr><td>Web</td><td>React 19、TypeScript、Vite，企业级三栏工作台、唯一请求清单与全生命周期详情</td><td><span class="status pass">PASS</span></td></tr>
+                  <tr><td>API</td><td>Fastify、Zod、签名会话、服务端权限与 ADMIN 用户角色管理</td><td><span class="status pass">PASS</span></td></tr>
                   <tr><td>数据</td><td>SQLite WAL、不可变快照、多轮审核、幂等记录</td><td><span class="status pass">PASS</span></td></tr>
-                  <tr><td>部署</td><td>Node 单实例、用户级 systemd、Caddy HTTPS 子路径代理</td><td><span class="status pass">ONLINE</span></td></tr>
+                  <tr><td>部署</td><td>CI 通过后自动发布、Node 单实例、systemd、Caddy 与健康失败回滚</td><td><span class="status pass">ONLINE</span></td></tr>
                   <tr><td>扩展目标</td><td>多实例前迁移 PostgreSQL，并补齐确定性并发与故障注入</td><td><span class="status partial">PLANNED</span></td></tr>
                 </tbody>
               </table>
